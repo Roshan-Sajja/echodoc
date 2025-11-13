@@ -1,3 +1,8 @@
+/**
+ * Root layout wires up global fonts, metadata, and imports the Tailwind reset.
+ * Every page in the app is rendered inside this shell, so this is the place for
+ * top-level providers once we need them.
+ */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
