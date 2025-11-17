@@ -43,16 +43,16 @@ export function DocumentUpload({ onUpload, isDarkMode }: DocumentUploadProps) {
   };
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : ''}`}>
+    <Card className={`p-6 ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : ''}`}>
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           isDragging
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
+            ? 'border-neutral-500 bg-neutral-50 dark:bg-neutral-900'
             : isDarkMode
-            ? 'border-slate-600 bg-slate-700'
+            ? 'border-neutral-600 bg-neutral-700'
             : 'border-slate-300 bg-slate-50'
         }`}
       >
@@ -66,9 +66,9 @@ export function DocumentUpload({ onUpload, isDarkMode }: DocumentUploadProps) {
         
         <div className="flex flex-col items-center gap-4">
           <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-            isDarkMode ? 'bg-blue-900' : 'bg-blue-100'
+            isDarkMode ? 'bg-neutral-700' : 'bg-slate-200'
           }`}>
-            <Upload className="w-8 h-8 text-blue-600" />
+            <Upload className="w-8 h-8 text-slate-700" />
           </div>
           
           <div>

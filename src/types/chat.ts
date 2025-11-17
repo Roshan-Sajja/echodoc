@@ -9,6 +9,9 @@ export interface UploadedContent {
   url?: string;
   file?: File;
   timestamp: Date;
+
+  contextId?: string;
+  preview?: string;
 }
 
 export interface Message {
@@ -17,4 +20,6 @@ export interface Message {
   content: string;
   timestamp: Date;
   isVoice?: boolean;
+  preview?: string;
+  totalChars?: number;
 }

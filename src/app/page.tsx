@@ -28,6 +28,10 @@ export default function App() {
   const [activeContent, setActiveContent] =
     useState<UploadedContent | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const resetToHome = () => {
+    setActiveContent(null);
+    setMessages([]);
+  };
 
  const handleDocumentUpload = async (file: File) => {
   // 1) Send the file to the backend
@@ -79,15 +83,9 @@ export default function App() {
     const systemMessage: Message = {
       id: (Date.now() + 1).toString(),
       type: "assistant",
-      content:
-        `I have processed "${file.name}" and loaded it as context.\n\n` +
-        (previewSnippet
-          ? `Here is a preview of the extracted text:\n\n${previewSnippet}${
-              data.totalChars > previewSnippet.length
-                ? "\n\n…(truncated)"
-                : ""
-            }`
-          : "I did not find much extractable text, but I will still try to help with questions."),
+      content: `I processed "${file.name}" and loaded it as context. Here’s a quick preview of what I found.`,
+      preview: previewSnippet,
+      totalChars: data.totalChars,
       timestamp: new Date(),
     };
 
@@ -147,13 +145,9 @@ const handleYouTubeAdd = async (url: string, title: string) => {
     const systemMessage: Message = {
       id: (Date.now() + 1).toString(),
       type: "assistant",
-      content:
-        `I have loaded the transcript for "${title}" and it is ready for questions.\n\n` +
-        (previewSnippet
-          ? `Here is a preview of the content:\n\n${previewSnippet}${
-              data.totalChars > previewSnippet.length ? "\n\n…(truncated)" : ""
-            }`
-          : "I did not find much text in the transcript, but I will still try to help with questions."),
+      content: `Loaded the transcript for "${title}" and it’s ready for questions. Here’s a quick preview.`,
+      preview: previewSnippet,
+      totalChars: data.totalChars,
       timestamp: new Date(),
     };
 
@@ -207,28 +201,34 @@ const handleYouTubeAdd = async (url: string, title: string) => {
     }, 1000);
   };
 
-  const hasContent = uploadedContent.length > 0;
+  const hasContent = Boolean(activeContent);
 
   return (
     <div className={`min-h-screen flex flex-col ${
       isDarkMode 
-        ? 'bg-gradient-to-b from-slate-900 to-slate-800' 
+        ? 'bg-gradient-to-b from-neutral-900 to-neutral-800' 
         : 'bg-gradient-to-b from-slate-50 to-slate-100'
     }`}>
       {/* Header */}
       <header className={`border-b sticky top-0 z-10 shadow-sm ${
         isDarkMode 
-          ? 'bg-slate-900 border-slate-700' 
+          ? 'bg-neutral-900 border-neutral-700' 
           : 'bg-white border-slate-200'
       }`}>
         <div className="px-4 py-4 flex items-start justify-between">
           <div className="flex-1">
-            <h1 className={`flex items-center gap-2 ${
-              isDarkMode ? 'text-white' : 'text-slate-900'
-            }`}>
-              <MessageSquare className="w-6 h-6 text-blue-600" />
-              EchoChat
-            </h1>
+            <button
+              type="button"
+              onClick={resetToHome}
+              className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-neutral-500 rounded-md"
+            >
+              <h1 className={`flex items-center gap-2 ${
+                isDarkMode ? 'text-white' : 'text-slate-900'
+              }`}>
+                <MessageSquare className="w-6 h-6 text-blue-600" />
+                EchoChat
+              </h1>
+            </button>
             <p className={`text-sm mt-1 ${
               isDarkMode ? 'text-slate-400' : 'text-slate-600'
             }`}>
@@ -275,8 +275,7 @@ const handleYouTubeAdd = async (url: string, title: string) => {
             activeContent={activeContent}
             onSendMessage={handleSendMessage}
             onBackToUpload={() => {
-              setActiveContent(null);
-              setMessages([]);
+              resetToHome();
             }}
             isDarkMode={isDarkMode}
           />
