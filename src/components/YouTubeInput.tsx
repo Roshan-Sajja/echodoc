@@ -1,3 +1,4 @@
+//echodoc/src/components/YouTubeInput.tsx
 /**
  * Collects a YouTube URL, gives the user lightweight validation feedback,
  * and reports back a pseudo title so the rest of the UI can treat it like
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 
 interface YouTubeInputProps {
-  onAdd: (url: string, title: string) => void;
+  onAdd: (url: string, title: string) => void | Promise<void>;
   isDarkMode?: boolean;
 }
 
@@ -61,11 +62,11 @@ export function YouTubeInput({ onAdd, isDarkMode }: YouTubeInputProps) {
   };
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'bg-slate-800 border-slate-700' : ''}`}>
+    <Card className={`p-6 ${isDarkMode ? 'bg-neutral-800 border-neutral-700' : ''}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="flex flex-col items-center gap-4 mb-6">
           <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-            isDarkMode ? 'bg-red-900' : 'bg-red-100'
+            isDarkMode ? 'bg-neutral-700' : 'bg-red-100'
           }`}>
             <Youtube className="w-8 h-8 text-red-600" />
           </div>
@@ -86,7 +87,7 @@ export function YouTubeInput({ onAdd, isDarkMode }: YouTubeInputProps) {
               placeholder="https://youtube.com/watch?v=..."
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white placeholder:text-slate-500' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'bg-neutral-700 border-neutral-600 text-white placeholder:text-slate-500' : ''}`}
             />
           </div>
           {error && (
