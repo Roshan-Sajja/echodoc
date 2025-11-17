@@ -29,47 +29,147 @@ export default function App() {
     useState<UploadedContent | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  const handleDocumentUpload = (file: File) => {
+ const handleDocumentUpload = async (file: File) => {
+  // 1) Send the file to the backend
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch("/api/upload-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      // Backend returns an error (size, parse issue, etc)
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content:
+          data.error ||
+          `Sorry, I could not process "${file.name}". Please try another PDF.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      return;
+    }
+
+    // 2) Create UploadedContent with contextId and preview from backend
     const newContent: UploadedContent = {
       id: Date.now().toString(),
       type: "document",
       name: file.name,
       file,
       timestamp: new Date(),
+      contextId: data.contextId,
+      preview: data.preview,
     };
+
     setUploadedContent((prev) => [...prev, newContent]);
     setActiveContent(newContent);
 
-    // Add system message
+    // 3) System message that includes a short preview
+    const previewSnippet =
+      typeof data.preview === "string"
+        ? data.preview.slice(0, 500)
+        : "";
+
     const systemMessage: Message = {
-      id: Date.now().toString(),
+      id: (Date.now() + 1).toString(),
       type: "assistant",
-      content: `Document "${file.name}" uploaded successfully! I'm ready to answer questions about it.`,
+      content:
+        `I have processed "${file.name}" and loaded it as context.\n\n` +
+        (previewSnippet
+          ? `Here is a preview of the extracted text:\n\n${previewSnippet}${
+              data.totalChars > previewSnippet.length
+                ? "\n\n…(truncated)"
+                : ""
+            }`
+          : "I did not find much extractable text, but I will still try to help with questions."),
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, systemMessage]);
-  };
 
-  const handleYouTubeAdd = (url: string, title: string) => {
+    setMessages((prev) => [...prev, systemMessage]);
+  } catch (err) {
+    console.error("PDF upload error", err);
+    const errorMessage: Message = {
+      id: Date.now().toString(),
+      type: "assistant",
+      content:
+        "Something went wrong while uploading the PDF. Please check your connection and try again.",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, errorMessage]);
+  }
+};
+
+const handleYouTubeAdd = async (url: string, title: string) => {
+  try {
+    const res = await fetch("/api/youtube-transcript", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content:
+          data.error ||
+          `Sorry, I could not fetch the transcript for that YouTube video. Please try another link.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      return;
+    }
+
     const newContent: UploadedContent = {
       id: Date.now().toString(),
       type: "youtube",
       name: title,
       url,
       timestamp: new Date(),
+      contextId: data.contextId,
+      preview: data.preview,
     };
+
     setUploadedContent((prev) => [...prev, newContent]);
     setActiveContent(newContent);
 
-    // Add system message
+    const previewSnippet =
+      typeof data.preview === "string" ? data.preview.slice(0, 500) : "";
+
     const systemMessage: Message = {
-      id: Date.now().toString(),
+      id: (Date.now() + 1).toString(),
       type: "assistant",
-      content: `YouTube video "${title}" added successfully! I'm ready to discuss its content.`,
+      content:
+        `I have loaded the transcript for "${title}" and it is ready for questions.\n\n` +
+        (previewSnippet
+          ? `Here is a preview of the content:\n\n${previewSnippet}${
+              data.totalChars > previewSnippet.length ? "\n\n…(truncated)" : ""
+            }`
+          : "I did not find much text in the transcript, but I will still try to help with questions."),
       timestamp: new Date(),
     };
+
     setMessages((prev) => [...prev, systemMessage]);
-  };
+  } catch (err) {
+    console.error("YouTube add error", err);
+    const errorMessage: Message = {
+      id: Date.now().toString(),
+      type: "assistant",
+      content:
+        "Something went wrong while processing the YouTube link. Please check your connection and try again.",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, errorMessage]);
+  }
+};
 
   const handleSendMessage = (
     content: string,

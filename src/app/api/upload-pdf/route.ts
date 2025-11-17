@@ -1,44 +1,38 @@
-/**
- * API endpoint that accepts a PDF file, extracts the text with `pdf-parse`,
- * and writes it into a lightweight in-memory store so the chat UI can grab
- * a context ID plus a quick preview. Written for humans: if the file is missing,
- * too large, or unreadable, we bail early with friendly JSON errors.
- */
 import { NextRequest, NextResponse } from "next/server";
-import * as pdfParse from "pdf-parse";
 import { saveContext } from "@/lib/contextStore";
+import { extractTextFromPdfBuffer } from "@/lib/parsePdf";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file");
+    const formData = await req.formData().catch(() => null);
 
-    if (!file || !(file instanceof File)) {
+    if (!formData) {
+      return NextResponse.json(
+        { error: "Invalid form data" },
+        { status: 400 },
+      );
+    }
+
+    const file = formData.get("file") as File | null;
+
+    if (!file) {
       return NextResponse.json(
         { error: "PDF file is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    if (file.size > 25 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: "File must be <= 25MB" },
-        { status: 400 }
-      );
-    }
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    const data = await (pdfParse as any)(buffer);
-
-    const text = data.text || "";
+    const text = await extractTextFromPdfBuffer(buffer);
 
     if (!text.trim()) {
       return NextResponse.json(
-        { error: "No extractable text found in PDF" },
-        { status: 400 }
+        { error: "Could not extract any text from this PDF." },
+        { status: 400 },
       );
     }
 
@@ -53,7 +47,7 @@ export async function POST(req: NextRequest) {
     console.error("PDF upload error", err);
     return NextResponse.json(
       { error: "Failed to process PDF" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

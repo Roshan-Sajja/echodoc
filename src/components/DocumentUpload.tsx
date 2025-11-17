@@ -9,7 +9,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 
 interface DocumentUploadProps {
-  onUpload: (file: File) => void;
+  onUpload: (file: File) => void | Promise<void>;
   isDarkMode?: boolean;
 }
 
@@ -59,7 +59,7 @@ export function DocumentUpload({ onUpload, isDarkMode }: DocumentUploadProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.doc,.docx,.txt"
+          accept="application/pdf"
           onChange={handleFileChange}
           className="hidden"
         />
@@ -87,7 +87,7 @@ export function DocumentUpload({ onUpload, isDarkMode }: DocumentUploadProps) {
           </Button>
           
           <p className={`text-xs mt-2 ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
-            Supported: PDF, DOC, DOCX, TXT
+            Supported: PDF
           </p>
         </div>
       </div>
