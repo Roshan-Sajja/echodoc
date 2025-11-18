@@ -33,6 +33,8 @@ export default function App() {
     setMessages([]);
   };
 
+    console.log("Active contextId:", activeContent?.contextId);
+
  const handleDocumentUpload = async (file: File) => {
   // 1) Send the file to the backend
   const formData = new FormData();
@@ -274,10 +276,9 @@ const handleYouTubeAdd = async (url: string, title: string) => {
             messages={messages}
             activeContent={activeContent}
             onSendMessage={handleSendMessage}
-            onBackToUpload={() => {
-              resetToHome();
-            }}
+            onBackToUpload={resetToHome}
             isDarkMode={isDarkMode}
+            contextId={activeContent?.contextId ?? null}
           />
         )}
       </main>

@@ -1,3 +1,4 @@
+// src/components/ChatInterface.tsx
 /**
  * Chat UI that sits beside the upload flow. Owns the text box, the voice mode,
  * and the scrolling message list while delegating the actual assistant logic
@@ -8,11 +9,8 @@ import { ArrowLeft, Send, Mic, X, Check } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageBubble } from './MessageBubble';
-import {
-  InlineVoiceRecorder,
-  InlineVoiceRecorderHandle,
-} from './InlineVoiceRecorder';
-import { AudioVisualizer } from './AudioVisualizer';
+import { RealtimeCallButton } from "./RealtimeCallButton";
+import { AudioVisualizer } from "./AudioVisualizer";
 import type { Message, UploadedContent } from "@/types/chat";
 
 interface ChatInterfaceProps {
@@ -21,6 +19,7 @@ interface ChatInterfaceProps {
   onSendMessage: (content: string, isVoice?: boolean) => void;
   onBackToUpload: () => void;
   isDarkMode?: boolean;
+  contextId: string | null;
 }
 
 export function ChatInterface({
@@ -29,12 +28,11 @@ export function ChatInterface({
   onSendMessage,
   onBackToUpload,
   isDarkMode,
+  contextId,
 }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const recorderRef = useRef<InlineVoiceRecorderHandle>(null);
+  const [isInCall, setIsInCall] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -49,12 +47,6 @@ export function ChatInterface({
     if (inputValue.trim()) {
       onSendMessage(inputValue, false);
       setInputValue('');
-    }
-  };
-
-  const handleVoiceComplete = (transcript: string) => {
-    if (transcript.trim()) {
-      onSendMessage(transcript, true);
     }
   };
 
@@ -133,73 +125,52 @@ export function ChatInterface({
       {/* Input Area */}
       <div
         className={`border-t p-4 ${
-          isDarkMode ? 'bg-neutral-900 border-neutral-700' : 'bg-white border-slate-200'
+          isDarkMode ? "bg-neutral-900 border-neutral-700" : "bg-white border-slate-200"
         }`}
       >
-        <div className="flex items-center gap-3">
-          <div className={isRecording ? 'hidden' : 'flex flex-1'}>
-            <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-1">
-              <Input
-                type="text"
-                placeholder="Type your message..."
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                className={`w-full ${
-                  isDarkMode
-                    ? 'bg-neutral-800 border-neutral-600 text-white placeholder:text-slate-500'
-                    : ''
-                }`}
-              />
-              <InlineVoiceRecorder
-                onTranscriptComplete={handleVoiceComplete}
-                isDarkMode={isDarkMode}
-                onRecordingChange={setIsRecording}
-                onSpeakingChange={setIsSpeaking}
-                ref={recorderRef}
-              />
-              <Button type="submit" size="icon" disabled={!inputValue.trim()}>
-                <Send className="w-4 h-4" />
-              </Button>
-            </form>
-          </div>
-
-          <div className={isRecording ? 'flex items-center gap-3 flex-1' : 'hidden'}>
-            <InlineVoiceRecorder
-              onTranscriptComplete={handleVoiceComplete}
-              isDarkMode={isDarkMode}
-              onRecordingChange={setIsRecording}
-              onSpeakingChange={setIsSpeaking}
-              ref={recorderRef}
-              className="hidden"
+        <div className="flex flex-col gap-3">
+          <form onSubmit={handleSubmit} className="flex items-center gap-2">
+            <Input
+              type="text"
+              placeholder="Type your message..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              className={`w-full ${
+                isDarkMode
+                  ? "bg-neutral-800 border-neutral-600 text-white placeholder:text-slate-500"
+                  : ""
+              }`}
             />
+            <RealtimeCallButton
+              contextId={contextId}
+              isDarkMode={isDarkMode}
+              onCallChange={setIsInCall}
+            />
+            <Button type="submit" size="icon" disabled={!inputValue.trim()}>
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+
+          <div
+            className={`items-center gap-3 ${
+              isInCall ? "flex" : "hidden"
+            }`}
+          >
             <div
               className={`flex items-center gap-3 flex-1 rounded-full px-4 py-2 ${
                 isDarkMode
-                  ? 'bg-neutral-800 border border-neutral-700'
-                  : 'bg-slate-50 border border-slate-200'
+                  ? "bg-neutral-800 border border-neutral-700"
+                  : "bg-slate-50 border border-slate-200"
               }`}
             >
-              <AudioVisualizer isActive={isSpeaking} isDarkMode={isDarkMode} />
-              <div className="flex items-center gap-1 ml-auto">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => recorderRef.current?.cancel()}
-                  className={isDarkMode ? 'text-white' : ''}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => recorderRef.current?.accept()}
-                  className={isDarkMode ? 'text-white' : ''}
-                >
-                  <Check className="w-4 h-4" />
-                </Button>
-              </div>
+              <AudioVisualizer isActive={true} isDarkMode={isDarkMode} />
+              <span
+                className={`text-xs ${
+                  isDarkMode ? "text-slate-300" : "text-slate-600"
+                }`}
+              >
+                Live voice chat in progress
+              </span>
             </div>
           </div>
         </div>

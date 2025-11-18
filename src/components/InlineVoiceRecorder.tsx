@@ -1,3 +1,4 @@
+// src/components/InlineVoiceRecorder.tsx
 /**
  * Compact mic button that records a transcript using the Web Speech API.
  * Caller controls finalize/cancel; we keep listening across short silences.

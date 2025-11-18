@@ -1,3 +1,4 @@
+// src/components/AudioVisualizer.tsx
 interface AudioVisualizerProps {
   isActive: boolean;
   isDarkMode?: boolean;
