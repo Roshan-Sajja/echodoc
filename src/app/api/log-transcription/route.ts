@@ -10,9 +10,13 @@ export async function POST(req: NextRequest) {
     const ts = new Date().toISOString();
     const logDir = path.join(process.cwd(), "logs");
     const logFile = path.join(logDir, "transcription-events.log");
-    await mkdir(logDir, { recursive: true });
-    const line = `[${ts}] ${JSON.stringify(body)}\n`;
-    await appendFile(logFile, line, "utf8");
+    try {
+      await mkdir(logDir, { recursive: true });
+      const line = `[${ts}] ${JSON.stringify(body)}\n`;
+      await appendFile(logFile, line, "utf8");
+    } catch {
+      // Ignore logging failures in serverless environments
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[Log Transcription API] Error", err);

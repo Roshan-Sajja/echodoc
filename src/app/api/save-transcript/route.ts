@@ -17,17 +17,21 @@ export async function POST(req: NextRequest) {
     const ts = new Date().toISOString();
     const logDir = path.join(process.cwd(), "logs");
     const logFile = path.join(logDir, "transcripts.log");
-    await mkdir(logDir, { recursive: true });
+    try {
+      await mkdir(logDir, { recursive: true });
 
-    const entry = [
-      `--- Transcript ${ts} ---`,
-      `contextId: ${body.contextId ?? "unknown"}`,
-      `endedAt: ${body.endedAt ?? "unknown"}`,
-      ...body.transcript,
-      "",
-    ].join("\n");
+      const entry = [
+        `--- Transcript ${ts} ---`,
+        `contextId: ${body.contextId ?? "unknown"}`,
+        `endedAt: ${body.endedAt ?? "unknown"}`,
+        ...body.transcript,
+        "",
+      ].join("\n");
 
-    await appendFile(logFile, entry, "utf8");
+      await appendFile(logFile, entry, "utf8");
+    } catch {
+      // Ignore logging failures in serverless environments
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
