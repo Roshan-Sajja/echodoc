@@ -7,6 +7,7 @@ import { buildContextInstructions } from "@/lib/instructions";
 
 interface RealtimeCallButtonProps {
   contextId: string | null;
+  contextText?: string;
   isDarkMode?: boolean;
   onCallChange?: (inCall: boolean) => void;   
   onAssistantDelta?: (text: string) => void;
@@ -26,6 +27,7 @@ export const RealtimeCallButton = forwardRef<RealtimeCallHandle, RealtimeCallBut
 function RealtimeCallButton(
   {
     contextId,
+    contextText,
     isDarkMode,
     onCallChange,
     onAssistantDelta,
@@ -156,7 +158,7 @@ function RealtimeCallButton(
     : "bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200";
 
   async function startCall() {
-    if (!contextId) {
+    if (!contextId && !contextText) {
       setError("No context selected. Upload a PDF or YouTube first.");
       setTimeout(() => setError(""), 2500);
       return;
@@ -174,7 +176,7 @@ function RealtimeCallButton(
       const res = await fetch("/api/realtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contextId }),
+        body: JSON.stringify({ contextId, contextText }),
       });
 
       if (!res.ok) {

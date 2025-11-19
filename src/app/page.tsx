@@ -82,6 +82,7 @@ export default function App() {
       timestamp: new Date(),
       contextId: data.contextId,
       preview: data.preview,
+      contextText: data.contextText ?? undefined,
     };
 
     setActiveContent(newContent);
@@ -142,6 +143,7 @@ const handleYouTubeAdd = async (url: string, fallbackTitle: string) => {
     timestamp: new Date(),
     contextId: data.contextId,
     preview: data.preview,
+    contextText: data.contextText ?? undefined,
     authorName: data.metadata?.authorName ?? undefined,
     subscriberCount: data.metadata?.subscriberCount ?? undefined,
     publishedAt: data.metadata?.publishedAt ?? undefined,
@@ -286,6 +288,7 @@ const handleYouTubeAdd = async (url: string, fallbackTitle: string) => {
               onBackToUpload={resetToHome}
               isDarkMode={isDarkMode}
               contextId={activeContent?.contextId ?? null}
+              contextText={activeContent?.contextText ?? null}
             />
           )}
         </main>

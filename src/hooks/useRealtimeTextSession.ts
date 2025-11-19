@@ -3,6 +3,7 @@ import { buildContextInstructions } from "@/lib/instructions";
 
 type UseRealtimeTextSessionArgs = {
   contextId: string | null;
+  contextText?: string;
   onAssistantDelta?: (text: string) => void;
   onAssistantDone?: (text: string) => void;
 };
@@ -80,6 +81,7 @@ const extractTextFromItem = (item: any): string => {
 
 export function useRealtimeTextSession({
   contextId,
+  contextText,
   onAssistantDelta,
   onAssistantDone,
 }: UseRealtimeTextSessionArgs): UseRealtimeTextSessionResult {
@@ -148,7 +150,7 @@ export function useRealtimeTextSession({
   }, []);
 
   useEffect(() => {
-    if (!contextId) {
+    if (!contextId && !contextText) {
       teardown();
       return;
     }
@@ -162,7 +164,7 @@ export function useRealtimeTextSession({
         const res = await fetch("/api/realtime", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contextId }),
+          body: JSON.stringify({ contextId, contextText }),
         });
 
         if (!res.ok) {
@@ -329,13 +331,13 @@ export function useRealtimeTextSession({
       aborted = true;
       teardown();
     };
-  }, [contextId, teardown]);
+  }, [contextId, contextText, teardown]);
 
   const sendTextMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      if (!contextId) {
+      if (!contextId && !contextText) {
         throw new Error("Please upload a document or video before chatting.");
       }
       if (awaitingResponseRef.current) {
@@ -348,7 +350,10 @@ export function useRealtimeTextSession({
         throw new Error("Realtime session is not ready yet. Please wait a moment.");
       }
 
-      logEvent("sendTextMessage", { contextId, text: trimmed });
+      logEvent("sendTextMessage", {
+        contextId: contextId ?? "inline-context",
+        text: trimmed,
+      });
       setError(null);
       bufferRef.current = "";
       assistantDeltaRef.current?.("");
@@ -376,7 +381,7 @@ export function useRealtimeTextSession({
       dc.send(JSON.stringify(responseEvent));
       logEvent("sendTextMessage dispatched", { length: trimmed.length });
     },
-    [contextId],
+    [contextId, contextText, logEvent],
   );
 
   return {

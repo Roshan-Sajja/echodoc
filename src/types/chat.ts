@@ -11,6 +11,7 @@ export interface UploadedContent {
   timestamp: Date;
 
   contextId?: string;
+  contextText?: string;
   preview?: string;
   authorName?: string;
   subscriberCount?: string;

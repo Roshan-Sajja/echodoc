@@ -22,6 +22,7 @@ interface ChatInterfaceProps {
   onBackToUpload: () => void;
   isDarkMode?: boolean;
   contextId: string | null;
+  contextText?: string | null;
 }
 
 const normalizeForComparison = (value: string) =>
@@ -163,6 +164,7 @@ export function ChatInterface({
   onBackToUpload,
   isDarkMode,
   contextId,
+  contextText,
 }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -233,6 +235,7 @@ export function ChatInterface({
   } =
     useRealtimeTextSession({
       contextId,
+      contextText: contextText ?? undefined,
       onAssistantDelta: handleAssistantDeltaUpdate,
       onAssistantDone: handleAssistantCompletion,
     });
@@ -280,7 +283,7 @@ export function ChatInterface({
     pushMessage(chatMsg);
   };
 
-  const isChatAvailable = Boolean(contextId);
+  const isChatAvailable = Boolean(contextId || contextText?.trim());
   const isSendDisabled =
     !inputValue.trim() || !isChatAvailable || !isTextReady || isResponding;
 
@@ -475,6 +478,7 @@ export function ChatInterface({
         <RealtimeCallButton
           ref={callRef}
           contextId={contextId}
+          contextText={contextText ?? undefined}
           isDarkMode={isDarkMode}
           onCallChange={setIsRealtimeInCall}
           onAssistantDelta={setPendingAssistantText}

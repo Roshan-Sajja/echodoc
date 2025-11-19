@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { saveContext } from "@/lib/contextStore";
 import { extractTextFromPdfBuffer } from "@/lib/parsePdf";
 
+const MAX_CONTEXT_CHARS = 12_000;
+
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -48,12 +50,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const contextId = saveContext(text);
+    const trimmed = text.slice(0, MAX_CONTEXT_CHARS);
+    const contextId = saveContext(trimmed);
 
     return NextResponse.json({
       contextId,
       preview: text.slice(0, 2000),
       totalChars: text.length,
+      contextText: trimmed,
     });
   } catch (err) {
     console.error("[Upload PDF API] PDF upload error", err);

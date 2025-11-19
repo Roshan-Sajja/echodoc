@@ -21,22 +21,28 @@ async function logRealtime(message: string, data?: any) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string }
+      | { contextId?: string; contextText?: string }
       | null;
 
-    if (!body || !body.contextId) {
+    if (!body || (!body.contextId && !body.contextText)) {
       console.warn("[Realtime API] Missing contextId");
       return NextResponse.json(
-        { error: "contextId is required" },
+        { error: "contextId or contextText is required" },
         { status: 400 },
       );
     }
 
     const contextId = body.contextId;
-    const text = getContext(contextId);
+    let text = contextId ? getContext(contextId) : undefined;
+    if (!text && typeof body.contextText === "string") {
+      text = body.contextText;
+    }
 
     if (!text) {
-      await logRealtime("Context missing", { contextId });
+      await logRealtime("Context missing", {
+        contextIdProvided: Boolean(contextId),
+        hadInlineText: typeof body.contextText === "string",
+      });
       return NextResponse.json(
         { error: "Context not found or expired" },
         { status: 404 },

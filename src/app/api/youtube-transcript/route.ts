@@ -3,6 +3,8 @@ import { saveContext } from "@/lib/contextStore";
 import { fetchYoutubeTranscriptViaService } from "@/lib/youtubeTranscriptIo";
 import ytdl from "ytdl-core";
 
+const MAX_CONTEXT_CHARS = 12_000;
+
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -98,13 +100,15 @@ export async function POST(req: NextRequest) {
       .join("\n");
 
     const combinedText = `${cleaned}${metadataSection}`;
+    const trimmed = combinedText.slice(0, MAX_CONTEXT_CHARS);
 
-    const contextId = saveContext(combinedText);
+    const contextId = saveContext(trimmed);
 
     return NextResponse.json({
       contextId,
       preview: combinedText.slice(0, 2000),
       totalChars: combinedText.length,
+      contextText: trimmed,
       metadata: {
         title: videoMeta.title ?? null,
         authorName: videoMeta.authorName ?? null,
