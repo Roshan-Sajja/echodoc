@@ -10,10 +10,12 @@ async function logRealtime(message: string, data?: any) {
   const line = `[${ts}] ${message}${data ? ` ${JSON.stringify(data)}` : ""}\n`;
   const logDir = path.join(process.cwd(), "logs");
   const logFile = path.join(logDir, "realtime.log");
-  await mkdir(logDir, { recursive: true });
-  await appendFile(logFile, line).catch(() => {
-    // Swallow logging errors so the route still responds
-  });
+  try {
+    await mkdir(logDir, { recursive: true });
+    await appendFile(logFile, line);
+  } catch {
+    // Ignore logging failures in serverless environments
+  }
 }
 
 export async function POST(req: NextRequest) {
