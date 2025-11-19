@@ -420,82 +420,148 @@ export function VoiceChat({
       <div className={`flex-1 w-full px-6 pb-10 ${isDarkMode ? "text-white" : "text-slate-900"}`}>
         <div
           className={`h-full flex flex-col items-center gap-8 transition-all duration-500 ${
-            showCaptionLayout ? "justify-start" : "justify-center"
+            showCaptionLayout ? "justify-start pt-16 md:pt-20" : "justify-center"
           }`}
         >
           <div
             className={`w-full max-w-3xl mx-auto flex gap-6 ${
-              showCaptionLayout ? "flex-col md:flex-row items-center md:items-start justify-between" : "flex-col items-center text-center"
+              showCaptionLayout
+                ? "flex-col items-center text-center"
+                : "flex-col md:flex-row items-center md:items-start justify-between text-center md:text-left"
             }`}
           >
-            <motion.div
-              layout
-              className={`flex flex-col gap-1 ${
-                showCaptionLayout ? "items-start text-left w-full" : "items-center text-center"
-              }`}
-            >
-              {!showCaptionLayout && <h2 className="text-3xl font-semibold mb-1">EchoChat AI</h2>}
-              <motion.span layout className={`font-mono tracking-wide ${showCaptionLayout ? "text-lg" : "text-2xl"}`}>
-                {formatDuration(callDuration)}
-              </motion.span>
-              <span className={`text-sm ${isDarkMode ? "text-white/70" : "text-slate-500"}`}>
-                {statusLabel}
-              </span>
-            </motion.div>
+            {showCaptionLayout ? (
+              <>
+                <motion.div
+                  layout
+                  variants={circleVariants}
+                  animate="caption"
+                  transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                  className="w-28 h-28 flex-shrink-0 relative"
+                >
+                  <div
+                    className={`absolute inset-0 rounded-full blur-2xl ${
+                      isDarkMode ? "bg-emerald-500/30" : "bg-emerald-300/40"
+                    } animate-pulse`}
+                  />
+                  {shouldPulse && (
+                    <>
+                      <motion.span
+                        className={`absolute inset-0 rounded-full border ${
+                          isDarkMode ? "border-emerald-100/40" : "border-emerald-500/50"
+                        } drop-shadow-[0_0_20px_rgba(16,185,129,0.35)]`}
+                        animate={{ scale: [1, 1.5], opacity: [0.6, 0] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+                      />
+                      <motion.span
+                        className={`absolute inset-0 rounded-full border ${
+                          isDarkMode ? "border-emerald-200/30" : "border-emerald-400/40"
+                        }`}
+                        animate={{ scale: [1, 1.75], opacity: [0.45, 0] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.3 }}
+                      />
+                      <motion.span
+                        className={`absolute inset-0 rounded-full ${
+                          isDarkMode ? "bg-emerald-400/10" : "bg-emerald-400/15"
+                        }`}
+                        animate={{ scale: [1, 1.9], opacity: [0.35, 0] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.6 }}
+                      />
+                    </>
+                  )}
+                  <div
+                    className={`relative w-full h-full rounded-full flex items-center justify-center ${
+                      isSpeaking
+                        ? isDarkMode
+                          ? "bg-blue-500"
+                          : "bg-blue-400"
+                        : isListening && !muted
+                          ? isDarkMode
+                            ? "bg-green-500"
+                            : "bg-green-400"
+                          : avatarCoreBg
+                    }`}
+                  >
+                    <Volume2 className="w-11 h-11" />
+                  </div>
+                </motion.div>
 
-            <motion.div
-              layout
-              variants={circleVariants}
-              animate={showCaptionLayout ? "caption" : "idle"}
-              transition={{ type: "spring", stiffness: 260, damping: 20 }}
-              className={`${showCaptionLayout ? "w-28 h-28" : "w-32 h-32"} flex-shrink-0 relative`}
-            >
-              <div
-                className={`absolute inset-0 rounded-full blur-2xl ${
-                  isDarkMode ? "bg-emerald-500/30" : "bg-emerald-300/40"
-                } animate-pulse`}
-              />
-              {shouldPulse && (
-                <>
-                  <motion.span
-                    className={`absolute inset-0 rounded-full border ${
-                      isDarkMode ? "border-emerald-100/40" : "border-emerald-500/50"
-                    } drop-shadow-[0_0_20px_rgba(16,185,129,0.35)]`}
-                    animate={{ scale: [1, 1.5], opacity: [0.6, 0] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+                <motion.div layout className="flex flex-col gap-1 items-center text-center">
+                  <motion.span layout className="font-mono tracking-wide text-lg">
+                    {formatDuration(callDuration)}
+                  </motion.span>
+                  <span className={`text-sm ${isDarkMode ? "text-white/70" : "text-slate-500"}`}>
+                    {statusLabel}
+                  </span>
+                </motion.div>
+              </>
+            ) : (
+              <>
+                <motion.div layout className="flex flex-col gap-1 items-center text-center md:items-start md:text-left w-full">
+                  <h2 className="text-3xl font-semibold mb-1">EchoChat AI</h2>
+                  <motion.span layout className="font-mono tracking-wide text-2xl">
+                    {formatDuration(callDuration)}
+                  </motion.span>
+                  <span className={`text-sm ${isDarkMode ? "text-white/70" : "text-slate-500"}`}>
+                    {statusLabel}
+                  </span>
+                </motion.div>
+
+                <motion.div
+                  layout
+                  variants={circleVariants}
+                  animate="idle"
+                  transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                  className="w-32 h-32 flex-shrink-0 relative"
+                >
+                  <div
+                    className={`absolute inset-0 rounded-full blur-2xl ${
+                      isDarkMode ? "bg-emerald-500/30" : "bg-emerald-300/40"
+                    } animate-pulse`}
                   />
-                  <motion.span
-                    className={`absolute inset-0 rounded-full border ${
-                      isDarkMode ? "border-emerald-200/30" : "border-emerald-400/40"
+                  {shouldPulse && (
+                    <>
+                      <motion.span
+                        className={`absolute inset-0 rounded-full border ${
+                          isDarkMode ? "border-emerald-100/40" : "border-emerald-500/50"
+                        } drop-shadow-[0_0_20px_rgba(16,185,129,0.35)]`}
+                        animate={{ scale: [1, 1.5], opacity: [0.6, 0] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+                      />
+                      <motion.span
+                        className={`absolute inset-0 rounded-full border ${
+                          isDarkMode ? "border-emerald-200/30" : "border-emerald-400/40"
+                        }`}
+                        animate={{ scale: [1, 1.75], opacity: [0.45, 0] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.3 }}
+                      />
+                      <motion.span
+                        className={`absolute inset-0 rounded-full ${
+                          isDarkMode ? "bg-emerald-400/10" : "bg-emerald-400/15"
+                        }`}
+                        animate={{ scale: [1, 1.9], opacity: [0.35, 0] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.6 }}
+                      />
+                    </>
+                  )}
+                  <div
+                    className={`relative w-full h-full rounded-full flex items-center justify-center ${
+                      isSpeaking
+                        ? isDarkMode
+                          ? "bg-blue-500"
+                          : "bg-blue-400"
+                        : isListening && !muted
+                          ? isDarkMode
+                            ? "bg-green-500"
+                            : "bg-green-400"
+                          : avatarCoreBg
                     }`}
-                    animate={{ scale: [1, 1.75], opacity: [0.45, 0] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.3 }}
-                  />
-                  <motion.span
-                    className={`absolute inset-0 rounded-full ${
-                      isDarkMode ? "bg-emerald-400/10" : "bg-emerald-400/15"
-                    }`}
-                    animate={{ scale: [1, 1.9], opacity: [0.35, 0] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.6 }}
-                  />
-                </>
-              )}
-              <div
-                className={`relative w-full h-full rounded-full flex items-center justify-center ${
-                  isSpeaking
-                    ? isDarkMode
-                      ? "bg-blue-500"
-                      : "bg-blue-400"
-                    : isListening && !muted
-                      ? isDarkMode
-                        ? "bg-green-500"
-                        : "bg-green-400"
-                      : avatarCoreBg
-                }`}
-              >
-                <Volume2 className={showCaptionLayout ? "w-11 h-11" : "w-12 h-12"} />
-              </div>
-            </motion.div>
+                  >
+                    <Volume2 className="w-12 h-12" />
+                  </div>
+                </motion.div>
+              </>
+            )}
           </div>
 
           <AnimatePresence initial={false}>

@@ -15,6 +15,10 @@ type UseRealtimeTextSessionResult = {
   isResponding: boolean;
 };
 
+const SHOULD_LOG_REALTIME_DEBUG =
+  process.env.NEXT_PUBLIC_REALTIME_DEBUG === "true" ||
+  process.env.NODE_ENV !== "production";
+
 const appendWithSpacing = (current: string, delta: string) => current + delta;
 
 const normalizeAssistantText = (value: string) =>
@@ -92,6 +96,7 @@ export function useRealtimeTextSession({
   const lastAssistantResponseRef = useRef("");
   const [isResponding, setIsResponding] = useState(false);
   const logEvent = useCallback((label: string, payload?: Record<string, unknown>) => {
+    if (!SHOULD_LOG_REALTIME_DEBUG) return;
     console.info("[RealtimeText]", label, payload ?? {});
   }, []);
 
