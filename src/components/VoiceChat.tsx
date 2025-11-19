@@ -424,7 +424,7 @@ export function VoiceChat({
       <div className={`flex-1 w-full px-6 pb-10 ${isDarkMode ? "text-white" : "text-slate-900"}`}>
         <div
           className={`h-full flex flex-col items-center gap-8 transition-all duration-500 ${
-            showCaptionLayout ? "justify-start pt-16 md:pt-20" : "justify-center"
+            showCaptionLayout ? "justify-start pt-20 md:pt-24" : "justify-center"
           }`}
         >
           <div
@@ -576,10 +576,10 @@ export function VoiceChat({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 32, scale: 0.95 }}
                 transition={{ duration: 0.35, ease: "easeOut" }}
-                className="w-full max-w-3xl"
+                className="w-full max-w-3xl px-2 sm:px-4"
               >
                 <div
-                  className={`p-6 text-left whitespace-pre-line leading-relaxed max-h-64 overflow-hidden flex items-end text-2xl ${
+                  className={`p-6 text-left whitespace-pre-line leading-relaxed max-h-[60vh] overflow-y-auto flex items-start text-2xl ${
                     isDarkMode ? "text-white" : "text-slate-900"
                   }`}
                 >
