@@ -5,16 +5,16 @@
  * back up to the page component.
  */
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, Mic, X, Check } from 'lucide-react';
+import { ArrowLeft, Send, Mic } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MessageBubble } from './MessageBubble';
-import { RealtimeCallButton } from "./RealtimeCallButton";
-import { AudioVisualizer } from "./AudioVisualizer";
-import type { Message, UploadedContent } from "@/types/chat";
+import type { UploadedContent, ChatMessage } from "@/types/chat";
+import { VoiceChat } from "./VoiceChat";
+import { RealtimeCallButton, RealtimeCallHandle } from "./RealtimeCallButton";
 
 interface ChatInterfaceProps {
-  messages: Message[];
+  messages: ChatMessage[];
   activeContent: UploadedContent | null;
   onSendMessage: (content: string, isVoice?: boolean) => void;
   onBackToUpload: () => void;
@@ -32,22 +32,60 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isInCall, setIsInCall] = useState(false);
+  const [isVoiceChatActive, setIsVoiceChatActive] = useState(false);
+  const callRef = useRef<RealtimeCallHandle | null>(null);
+  const [isRealtimeInCall, setIsRealtimeInCall] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => messages);
+  const [pendingAssistantText, setPendingAssistantText] = useState("");
+
+  const isMicMuted = () => {
+    const callMuted = callRef.current?.isMuted?.();
+    return typeof callMuted === "boolean" ? callMuted : isMuted;
+  };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
+  }, [chatMessages]);
+
+  useEffect(() => {
+    setChatMessages((prev) => {
+      const existingIds = new Set(prev.map((m) => m.id));
+      const additions = messages.filter((m) => !existingIds.has(m.id));
+      return additions.length ? [...prev, ...additions] : prev;
+    });
   }, [messages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputValue.trim()) {
       onSendMessage(inputValue, false);
+      const chatMsg: ChatMessage = {
+        id: `${Date.now()}-user`,
+        role: "user",
+        text: inputValue.trim(),
+        createdAt: new Date(),
+      };
+      setChatMessages((prev) => [...prev, chatMsg]);
       setInputValue('');
     }
+  };
+
+  const handleVoiceConversation = (userText: string) => {
+    if (isMicMuted()) return; // ignore local voice transcripts while muted
+    console.log("[ChatInterface] handleVoiceConversation add message", { userText, muted: isMuted });
+    const chatMsg: ChatMessage = {
+      id: `${Date.now()}-user`,
+      role: "user",
+      text: userText,
+      isVoice: true,
+      createdAt: new Date(),
+    };
+    setChatMessages((prev) => [...prev, chatMsg]);
   };
 
   return (
@@ -88,7 +126,7 @@ export function ChatInterface({
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.length === 0 ? (
+        {chatMessages.length === 0 ? (
           <div className="text-center py-12">
             <div
               className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
@@ -114,9 +152,20 @@ export function ChatInterface({
           </div>
         ) : (
           <>
-            {messages.map((message) => (
+            {chatMessages.map((message) => (
               <MessageBubble key={message.id} message={message} isDarkMode={isDarkMode} />
             ))}
+            {pendingAssistantText && (
+              <MessageBubble
+                message={{
+                  id: "pending-assistant",
+                  role: "assistant",
+                  text: pendingAssistantText,
+                  createdAt: new Date(),
+                }}
+                isDarkMode={isDarkMode}
+              />
+            )}
             <div ref={messagesEndRef} />
           </>
         )}
@@ -128,52 +177,104 @@ export function ChatInterface({
           isDarkMode ? "bg-neutral-900 border-neutral-700" : "bg-white border-slate-200"
         }`}
       >
-        <div className="flex flex-col gap-3">
-          <form onSubmit={handleSubmit} className="flex items-center gap-2">
-            <Input
-              type="text"
-              placeholder="Type your message..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              className={`w-full ${
-                isDarkMode
-                  ? "bg-neutral-800 border-neutral-600 text-white placeholder:text-slate-500"
-                  : ""
-              }`}
-            />
-            <RealtimeCallButton
-              contextId={contextId}
-              isDarkMode={isDarkMode}
-              onCallChange={setIsInCall}
-            />
-            <Button type="submit" size="icon" disabled={!inputValue.trim()}>
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
-
-          <div
-            className={`items-center gap-3 ${
-              isInCall ? "flex" : "hidden"
-            }`}
-          >
-            <div
-              className={`flex items-center gap-3 flex-1 rounded-full px-4 py-2 ${
-                isDarkMode
-                  ? "bg-neutral-800 border border-neutral-700"
-                  : "bg-slate-50 border border-slate-200"
-              }`}
-            >
-              <AudioVisualizer isActive={true} isDarkMode={isDarkMode} />
-              <span
-                className={`text-xs ${
-                  isDarkMode ? "text-slate-300" : "text-slate-600"
+        {isVoiceChatActive ? (
+          <VoiceChat
+            onConversationUpdate={handleVoiceConversation}
+            onClose={() => setIsVoiceChatActive(false)}
+            isDarkMode={isDarkMode}
+            onStartCall={async () => {
+              setPendingAssistantText("");
+              if (callRef.current) await callRef.current.start();
+            }}
+            onEndCall={() => {
+              callRef.current?.stop();
+              setIsVoiceChatActive(false);
+              setIsRealtimeInCall(false);
+              if (pendingAssistantText.trim()) {
+                const msg: ChatMessage = {
+                  id: `${Date.now()}-assistant`,
+                  role: "assistant",
+                  text: pendingAssistantText.trim(),
+                  createdAt: new Date(),
+                };
+                setChatMessages((prev) => [...prev, msg]);
+              }
+              setPendingAssistantText("");
+            }}
+          onToggleMute={(mute) => {
+            console.log("[ChatInterface] onToggleMute", { mute });
+            setIsMuted(mute);
+            if (mute) callRef.current?.mute();
+            else callRef.current?.unmute();
+            }}
+            isCallActive={isRealtimeInCall}
+            isMuted={isMuted}
+            modelTranscript={pendingAssistantText}
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <form onSubmit={handleSubmit} className="flex items-center gap-2">
+              <Input
+                type="text"
+                placeholder="Type your message..."
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                className={`w-full ${
+                  isDarkMode
+                    ? "bg-neutral-800 border-neutral-600 text-white placeholder:text-slate-500"
+                    : ""
                 }`}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant={isVoiceChatActive ? "default" : "outline"}
+                onClick={() => setIsVoiceChatActive(true)}
               >
-                Live voice chat in progress
-              </span>
-            </div>
+                <Mic className="w-4 h-4" />
+              </Button>
+              <Button type="submit" size="icon" disabled={!inputValue.trim()}>
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
           </div>
-        </div>
+        )}
+      </div>
+      {/* Hidden realtime call control to drive OpenAI audio while using the full-screen overlay */}
+      <div className="hidden">
+        <RealtimeCallButton
+          ref={callRef}
+          contextId={contextId}
+          isDarkMode={isDarkMode}
+          onCallChange={setIsRealtimeInCall}
+          onAssistantDelta={setPendingAssistantText}
+          onAssistantDone={(text) => {
+            if (!text.trim()) return;
+            const msg: ChatMessage = {
+              id: `${Date.now()}-assistant`,
+              role: "assistant",
+              text: text.trim(),
+              createdAt: new Date(),
+            };
+            setChatMessages((prev) => [...prev, msg]);
+            setPendingAssistantText("");
+          }}
+          onUserFinal={(text) => {
+            console.log("[ChatInterface] onUserFinal received", { text });
+            // RealtimeCallButton already filters muted turns before firing this callback
+            console.log("[ChatInterface] onUserFinal adding message to chat", { text });
+            const msg: ChatMessage = {
+              id: `${Date.now()}-user`,
+              role: "user",
+              text: text.trim(),
+              isVoice: true,
+              createdAt: new Date(),
+            };
+            setChatMessages((prev) => [...prev, msg]);
+            // Clear any pending assistant text so the next assistant turn starts clean
+            setPendingAssistantText("");
+          }}
+        />
       </div>
     </div>
   );

@@ -14,11 +14,11 @@ export interface UploadedContent {
   preview?: string;
 }
 
-export interface Message {
+export interface ChatMessage {
   id: string;
-  type: "user" | "assistant";
-  content: string;
-  timestamp: Date;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: Date;
   isVoice?: boolean;
   preview?: string;
   totalChars?: number;

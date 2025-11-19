@@ -6,7 +6,7 @@
  * screen. If you can explain this file, you can explain the entire app.
  */
 import { useState } from "react";
-import type { UploadedContent, Message } from "@/types/chat";
+import type { UploadedContent, ChatMessage } from "@/types/chat";
 import { FileText, Youtube, MessageSquare } from "lucide-react";
 import {
   Tabs,
@@ -24,7 +24,7 @@ export default function App() {
   const [uploadedContent, setUploadedContent] = useState<
     UploadedContent[]
   >([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeContent, setActiveContent] =
     useState<UploadedContent | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -50,13 +50,13 @@ export default function App() {
 
     if (!res.ok) {
       // Backend returns an error (size, parse issue, etc)
-      const errorMessage: Message = {
+      const errorMessage: ChatMessage = {
         id: Date.now().toString(),
-        type: "assistant",
-        content:
+        role: "assistant",
+        text:
           data.error ||
           `Sorry, I could not process "${file.name}". Please try another PDF.`,
-        timestamp: new Date(),
+        createdAt: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
       return;
@@ -82,24 +82,24 @@ export default function App() {
         ? data.preview.slice(0, 500)
         : "";
 
-    const systemMessage: Message = {
+    const systemMessage: ChatMessage = {
       id: (Date.now() + 1).toString(),
-      type: "assistant",
-      content: `I processed "${file.name}" and loaded it as context. Here’s a quick preview of what I found.`,
+      role: "assistant",
+      text: `I processed "${file.name}" and loaded it as context. Here’s a quick preview of what I found.`,
       preview: previewSnippet,
       totalChars: data.totalChars,
-      timestamp: new Date(),
+      createdAt: new Date(),
     };
 
     setMessages((prev) => [...prev, systemMessage]);
   } catch (err) {
     console.error("PDF upload error", err);
-    const errorMessage: Message = {
+    const errorMessage: ChatMessage = {
       id: Date.now().toString(),
-      type: "assistant",
-      content:
+      role: "assistant",
+      text:
         "Something went wrong while uploading the PDF. Please check your connection and try again.",
-      timestamp: new Date(),
+      createdAt: new Date(),
     };
     setMessages((prev) => [...prev, errorMessage]);
   }
@@ -116,13 +116,13 @@ const handleYouTubeAdd = async (url: string, title: string) => {
     const data = await res.json();
 
     if (!res.ok) {
-      const errorMessage: Message = {
+      const errorMessage: ChatMessage = {
         id: Date.now().toString(),
-        type: "assistant",
-        content:
+        role: "assistant",
+        text:
           data.error ||
           `Sorry, I could not fetch the transcript for that YouTube video. Please try another link.`,
-        timestamp: new Date(),
+        createdAt: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
       return;
@@ -144,24 +144,24 @@ const handleYouTubeAdd = async (url: string, title: string) => {
     const previewSnippet =
       typeof data.preview === "string" ? data.preview.slice(0, 500) : "";
 
-    const systemMessage: Message = {
+    const systemMessage: ChatMessage = {
       id: (Date.now() + 1).toString(),
-      type: "assistant",
-      content: `Loaded the transcript for "${title}" and it’s ready for questions. Here’s a quick preview.`,
+      role: "assistant",
+      text: `Loaded the transcript for "${title}" and it’s ready for questions. Here’s a quick preview.`,
       preview: previewSnippet,
       totalChars: data.totalChars,
-      timestamp: new Date(),
+      createdAt: new Date(),
     };
 
     setMessages((prev) => [...prev, systemMessage]);
   } catch (err) {
     console.error("YouTube add error", err);
-    const errorMessage: Message = {
+    const errorMessage: ChatMessage = {
       id: Date.now().toString(),
-      type: "assistant",
-      content:
+      role: "assistant",
+      text:
         "Something went wrong while processing the YouTube link. Please check your connection and try again.",
-      timestamp: new Date(),
+      createdAt: new Date(),
     };
     setMessages((prev) => [...prev, errorMessage]);
   }
@@ -172,36 +172,16 @@ const handleYouTubeAdd = async (url: string, title: string) => {
     isVoice: boolean = false,
   ) => {
     // Add user message
-    const userMessage: Message = {
+    const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      type: "user",
-      content,
-      timestamp: new Date(),
+      role: "user",
+      text: content,
+      createdAt: new Date(),
       isVoice,
     };
     setMessages((prev) => [...prev, userMessage]);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        "That's an interesting question. Based on the content, I can help you with that.",
-        "Let me analyze that section for you. Here's what I found...",
-        "Great question! From what I can see in the content...",
-        "I'd be happy to explain that part in more detail.",
-      ];
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: "assistant",
-        content:
-          responses[
-            Math.floor(Math.random() * responses.length)
-          ],
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 1000);
   };
+
 
   const hasContent = Boolean(activeContent);
 

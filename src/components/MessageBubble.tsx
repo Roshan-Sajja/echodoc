@@ -4,18 +4,22 @@
  */
 import { useState } from 'react';
 import { Mic } from 'lucide-react';
-import type { Message } from "@/types/chat";
+import type { ChatMessage } from "@/types/chat";
 
 interface MessageBubbleProps {
-  message: Message;
+  message: ChatMessage;
   isDarkMode?: boolean;
 }
 
 export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
-  const isUser = message.type === 'user';
+  const isUser = message.role === 'user';
   const hasPreview = Boolean(message.preview);
   const previewLength = message.preview?.length ?? 0;
   const [expanded, setExpanded] = useState(false);
+  const textItalic = message.isVoice ? "italic" : "";
+  const voiceLabelClasses = `${isDarkMode ? 'text-slate-300' : 'text-slate-600'} text-xs flex items-center gap-1 ${
+    isUser ? 'self-end justify-end' : 'self-start justify-start'
+  }`;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -25,24 +29,23 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
         }`}
       >
         {message.isVoice && (
-          <div className="flex items-center gap-1 mb-1 opacity-75">
-            <Mic className="w-3 h-3" />
-            <span className="text-xs">Voice message</span>
+          <div className={voiceLabelClasses}>
+            <Mic className="w-4 h-4" />
           </div>
         )}
         {isUser ? (
           <div className="bg-neutral-700 text-white rounded-2xl rounded-br-sm px-4 py-3 shadow-sm">
-            <p className="whitespace-pre-wrap break-words leading-relaxed">
-              {message.content}
+            <p className={`whitespace-pre-wrap break-words leading-relaxed ${textItalic}`}>
+              {message.isVoice ? `“${message.text}”` : message.text}
             </p>
           </div>
         ) : (
           <p
             className={`whitespace-pre-wrap break-words leading-relaxed ${
               isDarkMode ? 'text-slate-100' : 'text-slate-900'
-            }`}
+            } ${textItalic}`}
           >
-            {message.content}
+            {message.isVoice ? `“${message.text}”` : message.text}
           </p>
         )}
         {hasPreview && (
@@ -105,10 +108,16 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
         )}
         <p
           className={`text-xs mt-1 ${
-            isUser ? 'text-neutral-200' : isDarkMode ? 'text-slate-400' : 'text-slate-500'
+            isUser
+              ? isDarkMode
+                ? 'text-neutral-200'
+                : 'text-slate-500'
+              : isDarkMode
+                ? 'text-slate-400'
+                : 'text-slate-500'
           }`}
         >
-          {message.timestamp.toLocaleTimeString([], {
+          {message.createdAt.toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })}
