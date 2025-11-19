@@ -3,6 +3,7 @@
 
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Mic, MicOff, Loader2 } from "lucide-react";
+import { buildContextInstructions } from "@/lib/instructions";
 
 interface RealtimeCallButtonProps {
   contextId: string | null;
@@ -44,8 +45,8 @@ function RealtimeCallButton(
   const handledUserItemsRef = useRef<Set<string>>(new Set());
   const transcriptRef = useRef<string[]>([]);
   const modelTranscriptBufferRef = useRef("");
+  const modelStreamTypeRef = useRef<"text" | "audio" | null>(null);
   const userTranscriptBufferRef = useRef("");
-  const pendingInstructionsRef = useRef<Promise<void> | null>(null);
 
   const logTranscriptionEvent = async (payload: any) => {
     try {
@@ -59,16 +60,7 @@ function RealtimeCallButton(
     }
   };
 
-  const appendWithSpacing = (current: string, delta: string) => {
-    const trimmedDelta = `${delta}`;
-    if (!current) return trimmedDelta;
-    const needsSpace =
-      current.length > 0 &&
-      !/\s$/.test(current) &&
-      trimmedDelta.length > 0 &&
-      !/^\s/.test(trimmedDelta);
-    return current + (needsSpace ? " " : "") + trimmedDelta;
-  };
+  const appendWithSpacing = (current: string, delta: string) => current + `${delta}`;
 
   const sendUserTextToSession = (text: string) => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
@@ -102,19 +94,16 @@ function RealtimeCallButton(
 
     if (itemId) {
       if (handledUserItemsRef.current.has(itemId)) {
-        console.log("[Realtime Call] Skipping duplicate user transcript", { itemId });
         return;
       }
       handledUserItemsRef.current.add(itemId);
     }
 
     if (mutedRef.current) {
-      console.log("[Realtime Call] User transcript blocked because mic is muted", { itemId });
       return;
     }
 
     if (onUserFinal) {
-      console.log("[Realtime Call] Forwarding user transcript to ChatInterface", { finalUser, itemId });
       onUserFinal(finalUser);
     }
 
@@ -176,21 +165,18 @@ function RealtimeCallButton(
 
     try {
       setIsConnecting(true);
-      console.log("[Realtime Call] Starting call flow", { contextId });
       transcriptRef.current = [];
       modelTranscriptBufferRef.current = "";
       userTranscriptBufferRef.current = "";
       mutedRef.current = false;
       handledUserItemsRef.current.clear();
       // 1) Get ephemeral key from your Next API
-      console.log("[Realtime Call] Requesting client secret from /api/realtime");
       const res = await fetch("/api/realtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contextId }),
       });
 
-      console.log("[Realtime Call] /api/realtime response", { status: res.status });
       if (!res.ok) {
         setError("Could not start Realtime session.");
         setTimeout(() => setError(""), 2500);
@@ -200,7 +186,6 @@ function RealtimeCallButton(
 
       const { clientSecret } = await res.json();
       const EPHEMERAL_KEY = clientSecret as string;
-      console.log("[Realtime Call] Received client secret");
 
       // 2) Create peer connection
       const pc = new RTCPeerConnection();
@@ -225,12 +210,10 @@ function RealtimeCallButton(
       pc.addTrack(track);
 
       // 5) Data channel for events (optional for now)
-      const dc = pc.createDataChannel("oai-events");
-      dcRef.current = dc;
-      dc.onopen = () => {
-        console.log("[Realtime Call] Data channel opened");
-        // Fetch context text and update session instructions again to ensure the PDF/YT context is loaded
-        pendingInstructionsRef.current = (async () => {
+        const dc = pc.createDataChannel("oai-events");
+        dcRef.current = dc;
+        dc.onopen = async () => {
+          // Fetch context text and update session instructions again to ensure the PDF/YT context is loaded
           try {
             const ctxRes = await fetch("/api/context-text", {
               method: "POST",
@@ -247,38 +230,35 @@ function RealtimeCallButton(
                 JSON.stringify({
                   type: "session.update",
                   session: {
-                    instructions:
-                      "You are a friendly assistant. Greet the user briefly. Do not list all stored user profile details unless the user asks for them explicitly.\n\n" +
-                      "Use this text as your main reference when answering:\n\n" +
-                      text,
+                    instructions: buildContextInstructions(text, { passiveOnly: true }),
                   },
                 }),
               );
-              console.log("[Realtime Call] Session instructions refreshed with context text");
             }
           } catch (err) {
             console.error("[Realtime Call] Error refreshing instructions", err);
           }
-        })();
       };
       dc.onerror = (event) => {
         console.error("[Realtime Call] Data channel error", event);
       };
-      dc.onmessage = (event) => {
-        try {
-          const parsed = JSON.parse(event.data);
-          console.log("[Realtime Call] Data channel message (parsed)", parsed);
-          const type = parsed?.type;
-          const isUserDelta =
-            type === "conversation.item.input_audio_transcription.delta" ||
-            type === "conversation.item.input_audio_transcript.delta";
-          const isUserDone =
-            type === "conversation.item.input_audio_transcription.completed" ||
+        dc.onmessage = (event) => {
+          try {
+            const parsed = JSON.parse(event.data);
+            const type = parsed?.type;
+            if (type === "response.created") {
+              modelStreamTypeRef.current = null;
+              modelTranscriptBufferRef.current = "";
+            }
+            const isUserDelta =
+              type === "conversation.item.input_audio_transcription.delta" ||
+              type === "conversation.item.input_audio_transcript.delta";
+            const isUserDone =
+              type === "conversation.item.input_audio_transcription.completed" ||
             type === "conversation.item.input_audio_transcript.done" ||
             type === "conversation.item.input_audio_transcript.completed";
 
           if (isUserDelta) {
-            console.log("[Realtime Call] user delta", { delta: parsed.delta, muted: mutedRef.current });
             logTranscriptionEvent(parsed);
             const delta = parsed.delta ?? "";
             userTranscriptBufferRef.current = appendWithSpacing(
@@ -287,7 +267,6 @@ function RealtimeCallButton(
             );
             transcriptRef.current.push(`You(delta): ${delta}`);
           } else if (isUserDone) {
-            console.log("[Realtime Call] user final event", { muted: mutedRef.current, transcript: parsed.transcript });
             logTranscriptionEvent(parsed);
             const userRole = parsed.item?.role ?? "user";
             const finalUser =
@@ -309,40 +288,51 @@ function RealtimeCallButton(
             if (itemRole === "user") {
               const finalUser = extractTranscriptFromItem(parsed.item);
               if (finalUser) {
-                console.log("[Realtime Call] Extracted transcript from conversation.item.done", {
-                  itemId: parsed.item?.id,
-                  finalUser,
-                });
                 handleUserFinal(finalUser, parsed.item?.id);
-              } else {
-                console.log("[Realtime Call] conversation.item.done (user) contained no transcript", parsed.item);
               }
             }
           } else if (
-            type === "response.output_audio_transcript.delta" ||
-            type === "response.output_text.delta"
+            type === "response.output_text.delta" ||
+            type === "response.output_audio_transcript.delta"
           ) {
-            logTranscriptionEvent(parsed);
-            const delta = parsed.delta ?? "";
-            modelTranscriptBufferRef.current = appendWithSpacing(
-              modelTranscriptBufferRef.current,
-              delta,
-            );
-            transcriptRef.current.push(`AI(delta): ${delta}`);
-            if (onAssistantDelta) onAssistantDelta(modelTranscriptBufferRef.current);
+            const isText = type === "response.output_text.delta";
+            if (!modelStreamTypeRef.current) {
+              modelStreamTypeRef.current = isText ? "text" : "audio";
+            }
+            // Only consume deltas for the first modality we see to avoid double renders
+            if (modelStreamTypeRef.current === (isText ? "text" : "audio")) {
+              logTranscriptionEvent(parsed);
+              const delta = parsed.delta ?? "";
+              modelTranscriptBufferRef.current = appendWithSpacing(
+                modelTranscriptBufferRef.current,
+                delta,
+              );
+              transcriptRef.current.push(`AI(delta): ${delta}`);
+              if (onAssistantDelta) onAssistantDelta(modelTranscriptBufferRef.current);
+            }
           } else if (
             type === "response.output_text.done" ||
             type === "response.output_audio_transcript.done" ||
             type === "response.done" ||
             type === "response.completed"
           ) {
-            logTranscriptionEvent(parsed);
-            const finalAssistant = modelTranscriptBufferRef.current.trim();
-            if (finalAssistant && onAssistantDone) onAssistantDone(finalAssistant);
-            modelTranscriptBufferRef.current = "";
+            const isTextDone = type === "response.output_text.done";
+            const isAudioDone = type === "response.output_audio_transcript.done";
+            if (
+              modelStreamTypeRef.current === null ||
+              (modelStreamTypeRef.current === "text" && isTextDone) ||
+              (modelStreamTypeRef.current === "audio" && isAudioDone) ||
+              type === "response.done" ||
+              type === "response.completed"
+            ) {
+              logTranscriptionEvent(parsed);
+              const finalAssistant = modelTranscriptBufferRef.current.trim();
+              if (finalAssistant && onAssistantDone) onAssistantDone(finalAssistant);
+              modelTranscriptBufferRef.current = "";
+              modelStreamTypeRef.current = null;
+            }
           }
         } catch {
-          console.log("[Realtime Call] Data channel message (raw)", event.data);
           transcriptRef.current.push(`Raw: ${String(event.data)}`);
         }
       };
@@ -351,7 +341,6 @@ function RealtimeCallButton(
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      console.log("[Realtime Call] Sending SDP offer to OpenAI /realtime/calls");
       const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
         method: "POST",
         body: offer.sdp || "",
@@ -373,7 +362,6 @@ function RealtimeCallButton(
         return;
       }
 
-      console.log("[Realtime Call] OpenAI /realtime/calls succeeded");
       const answerSdp = await sdpResponse.text();
       const answer: RTCSessionDescriptionInit = {
         type: "answer",
@@ -381,7 +369,6 @@ function RealtimeCallButton(
       };
       await pc.setRemoteDescription(answer);
 
-      console.log("[Realtime Call] Call connected");
       setIsInCall(true);
       setIsConnecting(false);
       onCallChange?.(true);
@@ -428,13 +415,11 @@ function RealtimeCallButton(
 
   function muteMic() {
     mutedRef.current = true;
-    console.log("[Realtime Call] muteMic: mutedRef set true");
     if (micTrackRef.current) micTrackRef.current.enabled = false;
   }
 
   function unmuteMic() {
     mutedRef.current = false;
-    console.log("[Realtime Call] unmuteMic: mutedRef set false");
     if (micTrackRef.current) micTrackRef.current.enabled = true;
   }
 

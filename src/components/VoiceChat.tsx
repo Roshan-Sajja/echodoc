@@ -2,8 +2,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Phone, PhoneOff, Volume2, Mic, MicOff, X } from "lucide-react";
+import { Phone, PhoneOff, Volume2, Mic, MicOff, X, Captions, CaptionsOff } from "lucide-react";
 import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface VoiceChatProps {
   onConversationUpdate: (userText: string, aiText: string) => void;
@@ -32,8 +34,63 @@ export function VoiceChat({
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const muted = isMuted;
+  const [captionBuffer, setCaptionBuffer] = useState("");
+  const [captionDisplay, setCaptionDisplay] = useState("");
+  const captionDisplayRef = useRef("");
+  const captionIntervalRef = useRef<number | null>(null);
+  const MAX_CAPTION_CHARS = 800;
 
-  const currentTranscript = modelTranscript;
+  const currentTranscript = captionDisplay;
+
+  useEffect(() => {
+    const trimmed = modelTranscript?.trim?.() ?? "";
+    if (trimmed) {
+      setCaptionBuffer(trimmed);
+    } else if (!trimmed && !isCallActive) {
+      setCaptionBuffer("");
+    }
+  }, [modelTranscript, isCallActive]);
+
+  useEffect(() => {
+    captionDisplayRef.current = captionDisplay;
+  }, [captionDisplay]);
+
+  useEffect(() => {
+    if (captionIntervalRef.current) {
+      window.clearInterval(captionIntervalRef.current);
+      captionIntervalRef.current = null;
+    }
+
+    if (!captionBuffer?.trim()) {
+      setCaptionDisplay("");
+      return;
+    }
+
+    const target = captionBuffer.slice(-MAX_CAPTION_CHARS);
+    const current = captionDisplayRef.current;
+    let index = current && target.startsWith(current) ? current.length : 0;
+
+    if (index >= target.length) {
+      setCaptionDisplay(target);
+      return;
+    }
+
+    captionIntervalRef.current = window.setInterval(() => {
+      index = Math.min(target.length, index + 2);
+      setCaptionDisplay(target.slice(0, index));
+      if (index >= target.length && captionIntervalRef.current) {
+        window.clearInterval(captionIntervalRef.current);
+        captionIntervalRef.current = null;
+      }
+    }, 100);
+
+    return () => {
+      if (captionIntervalRef.current) {
+        window.clearInterval(captionIntervalRef.current);
+        captionIntervalRef.current = null;
+      }
+    };
+  }, [captionBuffer]);
 
   // Show only the most recent 2 sentences/lines to avoid huge blocks
   const compactTranscript = (() => {
@@ -46,17 +103,16 @@ export function VoiceChat({
     return lastTwo.join("\n");
   })();
   const [error, setError] = useState("");
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [callDuration, setCallDuration] = useState(0);
 
   const recognitionRef = useRef<any>(null);
-  const synthRef = useRef<SpeechSynthesis | null>(null);
   const callTimerRef = useRef<number | null>(null);
-  const waitingForVoicesRef = useRef(false);
   const recognitionStartingRef = useRef(false);
   const activeRef = useRef(false);
   const mutedStateRef = useRef(false);
   const speakingStateRef = useRef(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(true);
+  const [isStartingCall, setIsStartingCall] = useState(false);
 
   const startRecognitionSafe = () => {
     if (!recognitionRef.current) return;
@@ -157,7 +213,6 @@ export function VoiceChat({
       }
 
       if (finalTranscript.trim()) {
-        console.log("[VoiceChat] onresult finalTranscript", { finalTranscript });
         onConversationUpdate(finalTranscript.trim(), "");
       }
     };
@@ -182,75 +237,12 @@ export function VoiceChat({
       }
     };
 
-    // Initialize Speech Synthesis
-    synthRef.current = window.speechSynthesis;
-
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
-      if (synthRef.current) {
-        synthRef.current.cancel();
-      }
     };
   }, [isActive, isSpeaking, muted]);
-
-  const speakResponse = (text: string) => {
-    const synth = synthRef.current;
-    if (!synth) return;
-
-    const pickVoice = () => {
-      const voices = synth.getVoices();
-      return voices.find((v) => v.lang?.toLowerCase().startsWith("en")) || voices[0] || null;
-    };
-
-    let voice = pickVoice();
-    if (!voice) {
-      if (!waitingForVoicesRef.current) {
-        waitingForVoicesRef.current = true;
-        synth.onvoiceschanged = () => {
-          waitingForVoicesRef.current = false;
-          synth.onvoiceschanged = null;
-          speakResponse(text);
-        };
-      } else {
-        setError("Voice synthesis error: no TTS voices available");
-      }
-      return;
-    }
-
-    synth.cancel(); // clear any queued utterances
-    setIsSpeaking(true);
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = voice;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-
-      // Resume listening after AI finishes speaking
-      if (isActive && recognitionRef.current && !muted) {
-        setIsListening(true);
-        startRecognitionSafe();
-      }
-    };
-
-    utterance.onerror = (e: any) => {
-      setIsSpeaking(false);
-      const errType = e?.error;
-      if (errType === "interrupted" || errType === "canceled") {
-        // These are benign when the user ends/mutes the call or a new utterance preempts the current one
-        return;
-      }
-      const errMsg = errType ? `Voice synthesis error: ${errType}` : "Voice synthesis error";
-      setError(errMsg);
-      console.error(errMsg, e);
-    };
-
-    synth.speak(utterance);
-  };
 
   const handleStartCall = async () => {
     if (!recognitionRef.current) {
@@ -259,20 +251,19 @@ export function VoiceChat({
     }
 
     try {
+      setIsStartingCall(true);
       // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       // Permission granted - stop the stream as we only needed it for permission
       stream.getTracks().forEach((track) => track.stop());
 
-      setHasPermission(true);
       activeRef.current = true;
       setIsListening(true);
       setError("");
       await onStartCall();
     } catch (err: any) {
       console.error("Microphone permission error:", err);
-      setHasPermission(false);
 
       // Provide specific error messages based on error type
       if (err.name === "NotAllowedError") {
@@ -286,6 +277,8 @@ export function VoiceChat({
       } else {
         setError("Could not access microphone. Please check your browser settings and try again.");
       }
+    } finally {
+      setIsStartingCall(false);
     }
   };
 
@@ -297,9 +290,6 @@ export function VoiceChat({
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
-    if (synthRef.current) {
-      synthRef.current.cancel();
-    }
 
     onEndCall();
     onClose();
@@ -307,7 +297,6 @@ export function VoiceChat({
 
   const toggleMute = () => {
     const newMutedState = !muted;
-    console.log("[VoiceChat] toggleMute", { newMutedState });
     onToggleMute(newMutedState);
     recognitionRef.current?.stop();
     if (!newMutedState && isActive) {
@@ -366,11 +355,16 @@ export function VoiceChat({
             onClick={handleStartCall}
             size="lg"
             className="w-20 h-20 rounded-full bg-green-600 hover:bg-green-700"
+            disabled={isStartingCall}
           >
-            <Phone className="w-8 h-8" />
+            {isStartingCall ? (
+              <Spinner className="w-8 h-8 text-white" />
+            ) : (
+              <Phone className="w-8 h-8" />
+            )}
           </Button>
           <p className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-            Tap to start voice call
+            {isStartingCall ? "Connecting to voice call…" : "Tap to start voice call"}
           </p>
           <p className={`text-xs text-center max-w-xs ${isDarkMode ? "text-slate-500" : "text-slate-500"}`}>
             You'll be asked to allow microphone access
@@ -388,8 +382,28 @@ export function VoiceChat({
     ? "bg-white/10 text-white hover:bg-white/20"
     : "bg-slate-100 text-slate-700 hover:bg-slate-200";
 
+  const showCaptionLayout = captionsEnabled;
+  const statusLabel = isSpeaking
+    ? "Responding…"
+    : isListening && !muted
+      ? "Listening…"
+      : muted
+        ? "Muted"
+        : "Connected";
+  const circleVariants = {
+    idle: { scale: 1, y: 0 },
+    caption: { scale: 0.9, y: -12 },
+  } as const;
+  const shouldPulse = !muted && (isListening || isSpeaking);
+
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col ${containerBg}`}>
+    <motion.div
+      className={`fixed inset-0 z-50 flex flex-col ${containerBg}`}
+      initial={{ opacity: 0, y: 32 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 32 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+    >
       {/* Close button */}
       <div className="flex justify-end p-4">
         <button
@@ -402,92 +416,133 @@ export function VoiceChat({
         </button>
       </div>
 
-      {/* Call Header */}
-      <div
-        className={`flex-1 flex flex-col items-center justify-center px-6 ${
-          isDarkMode ? "text-white" : "text-slate-900"
-        }`}
-      >
+      {/* Call header & captions */}
+      <div className={`flex-1 w-full px-6 pb-10 ${isDarkMode ? "text-white" : "text-slate-900"}`}>
         <div
-          className={`w-32 h-32 rounded-full ${avatarShellBg} backdrop-blur-sm flex items-center justify-center mb-6 relative`}
-        >
-          <div
-            className={`w-28 h-28 rounded-full flex items-center justify-center ${
-              isSpeaking
-                ? isDarkMode
-                  ? "bg-blue-500 animate-pulse"
-                  : "bg-blue-400 animate-pulse"
-                : isListening && !muted
-                  ? isDarkMode
-                    ? "bg-green-500 animate-pulse"
-                    : "bg-green-400 animate-pulse"
-                  : avatarCoreBg
-            }`}
-          >
-            <Volume2 className="w-12 h-12" />
-          </div>
-        </div>
-
-        <h2 className="text-3xl mb-2">DocuChat AI</h2>
-        <p
-          className={`text-lg mb-1 ${
-            isDarkMode ? "text-white/80" : "text-slate-600"
+          className={`h-full flex flex-col items-center gap-8 transition-all duration-500 ${
+            showCaptionLayout ? "justify-start" : "justify-center"
           }`}
         >
-          {formatDuration(callDuration)}
-        </p>
-
-        <div className="h-6 flex items-center justify-center">
-          {isSpeaking ? (
-            <p className={`text-sm ${isDarkMode ? "text-white/90" : "text-slate-700"}`}>
-              AI is speaking...
-            </p>
-          ) : muted ? (
-            <p className={`text-sm ${isDarkMode ? "text-white/90" : "text-slate-700"}`}>Muted</p>
-          ) : isListening ? (
-            <p className={`text-sm ${isDarkMode ? "text-white/90" : "text-slate-700"}`}>
-              Listening...
-            </p>
-          ) : (
-            <p className={`text-sm ${isDarkMode ? "text-white/90" : "text-slate-700"}`}>
-              Processing...
-            </p>
-          )}
-        </div>
-
-        {compactTranscript && (
-          <div className="mt-8 max-w-md w-full">
-            <div
-              className={`backdrop-blur-md rounded-2xl p-4 ${
-                isDarkMode
-                  ? "bg-white/10 border border-white/20"
-                  : "bg-slate-100 border border-slate-200"
+          <div
+            className={`w-full max-w-3xl mx-auto flex gap-6 ${
+              showCaptionLayout ? "flex-col md:flex-row items-center md:items-start justify-between" : "flex-col items-center text-center"
+            }`}
+          >
+            <motion.div
+              layout
+              className={`flex flex-col gap-1 ${
+                showCaptionLayout ? "items-start text-left w-full" : "items-center text-center"
               }`}
             >
-              <p
-                className={`text-sm text-center whitespace-pre-line ${
-                  isDarkMode ? "text-white/90" : "text-slate-800"
+              {!showCaptionLayout && <h2 className="text-3xl font-semibold mb-1">EchoChat AI</h2>}
+              <motion.span layout className={`font-mono tracking-wide ${showCaptionLayout ? "text-lg" : "text-2xl"}`}>
+                {formatDuration(callDuration)}
+              </motion.span>
+              <span className={`text-sm ${isDarkMode ? "text-white/70" : "text-slate-500"}`}>
+                {statusLabel}
+              </span>
+            </motion.div>
+
+            <motion.div
+              layout
+              variants={circleVariants}
+              animate={showCaptionLayout ? "caption" : "idle"}
+              transition={{ type: "spring", stiffness: 260, damping: 20 }}
+              className={`${showCaptionLayout ? "w-28 h-28" : "w-32 h-32"} flex-shrink-0 relative`}
+            >
+              <div
+                className={`absolute inset-0 rounded-full blur-2xl ${
+                  isDarkMode ? "bg-emerald-500/30" : "bg-emerald-300/40"
+                } animate-pulse`}
+              />
+              {shouldPulse && (
+                <>
+                  <motion.span
+                    className={`absolute inset-0 rounded-full border ${
+                      isDarkMode ? "border-emerald-100/40" : "border-emerald-500/50"
+                    } drop-shadow-[0_0_20px_rgba(16,185,129,0.35)]`}
+                    animate={{ scale: [1, 1.5], opacity: [0.6, 0] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+                  />
+                  <motion.span
+                    className={`absolute inset-0 rounded-full border ${
+                      isDarkMode ? "border-emerald-200/30" : "border-emerald-400/40"
+                    }`}
+                    animate={{ scale: [1, 1.75], opacity: [0.45, 0] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.3 }}
+                  />
+                  <motion.span
+                    className={`absolute inset-0 rounded-full ${
+                      isDarkMode ? "bg-emerald-400/10" : "bg-emerald-400/15"
+                    }`}
+                    animate={{ scale: [1, 1.9], opacity: [0.35, 0] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut", delay: 0.6 }}
+                  />
+                </>
+              )}
+              <div
+                className={`relative w-full h-full rounded-full flex items-center justify-center ${
+                  isSpeaking
+                    ? isDarkMode
+                      ? "bg-blue-500"
+                      : "bg-blue-400"
+                    : isListening && !muted
+                      ? isDarkMode
+                        ? "bg-green-500"
+                        : "bg-green-400"
+                      : avatarCoreBg
                 }`}
               >
-                {compactTranscript}
-              </p>
-            </div>
+                <Volume2 className={showCaptionLayout ? "w-11 h-11" : "w-12 h-12"} />
+              </div>
+            </motion.div>
           </div>
-        )}
 
-        {error && (
-          <div className="mt-4 max-w-md w-full">
+          <AnimatePresence initial={false}>
+            {showCaptionLayout && (
+              <motion.div
+                key="caption-panel"
+                initial={{ opacity: 0, y: 32, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 32, scale: 0.95 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                className="w-full max-w-3xl"
+              >
+                <div
+                  className={`p-6 text-left whitespace-pre-line leading-relaxed max-h-64 overflow-hidden flex items-end text-2xl ${
+                    isDarkMode ? "text-white" : "text-slate-900"
+                  }`}
+                >
+                  {compactTranscript || statusLabel}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!showCaptionLayout && error && (
             <div
-              className={`backdrop-blur-md rounded-2xl p-3 border ${
+              className={`p-3 rounded-2xl border ${
                 isDarkMode
                   ? "bg-red-500/90 border-red-400 text-white"
                   : "bg-red-100 border-red-200 text-red-800"
               }`}
             >
-              <p className="text-sm text-center">{error}</p>
+              <p className="text-sm">{error}</p>
             </div>
-          </div>
-        )}
+          )}
+
+          {showCaptionLayout && error && (
+            <div
+              className={`p-3 rounded-2xl border ${
+                isDarkMode
+                  ? "bg-red-500/90 border-red-400 text-white"
+                  : "bg-red-100 border-red-200 text-red-800"
+              }`}
+            >
+              <p className="text-sm">{error}</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Call Controls */}
@@ -509,25 +564,33 @@ export function VoiceChat({
             {muted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
           </button>
 
+                <button
+                  onClick={handleEndCall}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                    isDarkMode ? "bg-red-600 hover:bg-red-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"
+                  }`}
+                  aria-label="End call"
+                >
+                  <PhoneOff className="w-8 h-8" />
+                </button>
+
           <button
-            onClick={handleEndCall}
-            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-lg ${
-              isDarkMode ? "bg-red-600 hover:bg-red-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"
+            onClick={() => setCaptionsEnabled((prev) => !prev)}
+            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${
+              captionsEnabled
+                ? isDarkMode
+                  ? "bg-emerald-500 text-white"
+                  : "bg-emerald-100 text-emerald-700"
+                : isDarkMode
+                  ? "bg-white/20 backdrop-blur-sm text-white hover:bg-white/30"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
             }`}
-            aria-label="End call"
+            aria-label={captionsEnabled ? "Disable captions" : "Enable captions"}
           >
-            <PhoneOff className="w-8 h-8" />
+            {captionsEnabled ? <Captions className="w-7 h-7" /> : <CaptionsOff className="w-7 h-7" />}
           </button>
-
-          <div className="w-16 h-16" />
-        </div>
-
-        <div className="flex justify-center gap-6 mt-6 text-white/80 text-xs">
-          <span className="flex items-center gap-1">{muted ? "Unmute" : "Mute"}</span>
-          <span>•</span>
-          <span className="flex items-center gap-1">End Call</span>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

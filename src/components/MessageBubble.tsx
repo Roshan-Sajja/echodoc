@@ -2,7 +2,7 @@
  * Presentational bubble used inside the chat list. Keeps alignment, colors, and
  * timestamp formatting in one place so the parent just maps over messages.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Mic } from 'lucide-react';
 import type { ChatMessage } from "@/types/chat";
 
@@ -20,6 +20,31 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
   const voiceLabelClasses = `${isDarkMode ? 'text-slate-300' : 'text-slate-600'} text-xs flex items-center gap-1 ${
     isUser ? 'self-end justify-end' : 'self-start justify-start'
   }`;
+  const initialText = message.isVoice ? `“${message.text}”` : message.text;
+  const [displayedText, setDisplayedText] = useState(initialText);
+
+  useEffect(() => {
+    const fullText = message.isVoice ? `“${message.text}”` : message.text;
+    const shouldAnimate =
+      !isUser && message.id !== "pending-assistant" && !message.wasStreamed;
+
+    if (!shouldAnimate) {
+      setDisplayedText(fullText);
+      return;
+    }
+
+    setDisplayedText("");
+    let index = 0;
+    const interval = setInterval(() => {
+      index += 1; // animate at a more relaxed pace
+      setDisplayedText(fullText.slice(0, index));
+      if (index >= fullText.length) {
+        clearInterval(interval);
+      }
+    }, 32);
+
+    return () => clearInterval(interval);
+  }, [isUser, message.id, message.isVoice, message.text]);
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -45,7 +70,7 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
               isDarkMode ? 'text-slate-100' : 'text-slate-900'
             } ${textItalic}`}
           >
-            {message.isVoice ? `“${message.text}”` : message.text}
+            {displayedText}
           </p>
         )}
         {hasPreview && (
@@ -77,7 +102,7 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
               <div
                 className={`rounded-xl border text-sm leading-relaxed ${
                   isDarkMode
-                    ? 'bg-slate-900/60 border-slate-700 text-slate-200'
+                    ? 'bg-neutral-900/60 border-neutral-700 text-slate-100'
                     : 'bg-slate-50 border-slate-200 text-slate-800'
                 } ${expanded ? 'max-h-80' : 'max-h-32'} overflow-auto`}
               >
@@ -89,7 +114,7 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
                 <div
                   className={`pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-xl ${
                     isDarkMode
-                      ? 'bg-gradient-to-t from-slate-900/90 to-transparent'
+                      ? 'bg-gradient-to-t from-neutral-900/85 to-transparent'
                       : 'bg-gradient-to-t from-slate-50 to-transparent'
                   }`}
                 />

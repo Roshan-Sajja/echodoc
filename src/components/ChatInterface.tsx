@@ -4,7 +4,7 @@
  * and the scrolling message list while delegating the actual assistant logic
  * back up to the page component.
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowLeft, Send, Mic } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,15 +12,149 @@ import { MessageBubble } from './MessageBubble';
 import type { UploadedContent, ChatMessage } from "@/types/chat";
 import { VoiceChat } from "./VoiceChat";
 import { RealtimeCallButton, RealtimeCallHandle } from "./RealtimeCallButton";
+import { useRealtimeTextSession } from "@/hooks/useRealtimeTextSession";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
   activeContent: UploadedContent | null;
-  onSendMessage: (content: string, isVoice?: boolean) => void;
+  onSendMessage: (message: ChatMessage) => void | Promise<void>;
   onBackToUpload: () => void;
   isDarkMode?: boolean;
   contextId: string | null;
 }
+
+const normalizeForComparison = (value: string) =>
+  value
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .trim()
+    .toLowerCase();
+
+const isSameText = (a: string, b: string) =>
+  !!a && !!b && normalizeForComparison(a) === normalizeForComparison(b);
+
+const stripTextLabel = (value: string) =>
+  value.replace(/^Text\s*:\s*/i, "").trim();
+
+const PLEASANTRY_PATTERNS = [
+  /^(?:hi|hey|hello)(?: there)?$/i,
+  /^greetings$/i,
+  /^howdy$/i,
+  /^good (?:morning|afternoon|evening)$/i,
+  /^(?:thanks|thank you)(?: (?:so|very) much)?$/i,
+  /^appreciate (?:it|you)$/i,
+  /^(?:sure(?: thing)?|absolutely|of course)$/i,
+  /^happy to help$/i,
+  /^you'?re welcome$/i,
+  /^no problem$/i,
+  /^anytime$/i,
+  /^take care$/i,
+  /^bye(?: bye)?$/i,
+];
+
+const isShortPleasantry = (value: string) => {
+  if (!value) return false;
+  const normalized = normalizeForComparison(value)
+    .replace(/[.!?]/g, "")
+    .trim();
+  if (!normalized) return false;
+  if (normalized.length > 80) return false;
+  const words = normalized.split(/\s+/);
+  if (words.length > 6) return false;
+  return PLEASANTRY_PATTERNS.some((pattern) => pattern.test(normalized));
+};
+
+const stripTextLabelDuplication = (value: string) => {
+  const marker = /(\n+|^)\s*(?:---\s*)?Text\s*:\s*/i;
+  const match = marker.exec(value);
+  if (!match) return value;
+  const first = value.slice(0, match.index).trim();
+  const second = stripTextLabel(
+    value.slice(match.index + match[0].length).trim(),
+  );
+  if (!first || !second) return value;
+  return isSameText(first, second) ? first : value;
+};
+
+const stripDividerDuplication = (value: string) => {
+  const segments = value.split(/\n+\s*---\s*\n+/);
+  if (segments.length < 2) return value;
+
+  const cleaned: string[] = [];
+  let removedSomething = false;
+
+  for (const segment of segments) {
+    const trimmed = stripTextLabel(segment.trim());
+    if (!trimmed) {
+      removedSomething = true;
+      continue;
+    }
+
+    const duplicateOfExisting = cleaned.some((existing) => isSameText(existing, trimmed));
+    if (duplicateOfExisting || isShortPleasantry(trimmed)) {
+      removedSomething = true;
+      continue;
+    }
+
+    cleaned.push(trimmed);
+  }
+
+  if (!removedSomething) {
+    return value;
+  }
+
+  if (!cleaned.length) {
+    const firstNonEmpty = segments.map((segment) => segment.trim()).find(Boolean);
+    return firstNonEmpty ?? "";
+  }
+
+  return cleaned.join("\n\n---\n\n");
+};
+
+const stripRepeatedParagraphs = (value: string) => {
+  const segments = value.split(/\n{2,}/);
+  if (segments.length < 2) return value;
+
+  const cleaned: string[] = [];
+  let removed = false;
+
+  for (const segment of segments) {
+    const trimmed = stripTextLabel(segment.trim());
+    if (!trimmed) {
+      removed = true;
+      continue;
+    }
+
+    // Only drop if exactly same as previous meaningful paragraph
+    const last = cleaned[cleaned.length - 1];
+    if (last && isSameText(last, trimmed)) {
+      removed = true;
+      continue;
+    }
+
+    cleaned.push(trimmed);
+  }
+
+  return removed ? cleaned.join("\n\n") : value;
+};
+
+const stripEmDashDuplication = (value: string) => {
+  if (!value.includes("—")) return value;
+  const parts = value.split(/\s+—\s+/);
+  if (parts.length !== 2) return value;
+  const left = stripTextLabel(parts[0].trim());
+  const right = stripTextLabel(parts[1].trim());
+  if (!left || !right) return value;
+  return isSameText(left, right) ? left : value;
+};
+
+const stripDuplicatedAssistantEcho = (text: string) =>
+  stripEmDashDuplication(
+    stripRepeatedParagraphs(
+      stripDividerDuplication(stripTextLabelDuplication(text)),
+    ),
+  );
 
 export function ChatInterface({
   messages,
@@ -38,6 +172,7 @@ export function ChatInterface({
   const [isMuted, setIsMuted] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => messages);
   const [pendingAssistantText, setPendingAssistantText] = useState("");
+  const [textSessionError, setTextSessionError] = useState<string | null>(null);
 
   const isMicMuted = () => {
     const callMuted = callRef.current?.isMuted?.();
@@ -56,28 +191,85 @@ export function ChatInterface({
     setChatMessages((prev) => {
       const existingIds = new Set(prev.map((m) => m.id));
       const additions = messages.filter((m) => !existingIds.has(m.id));
-      return additions.length ? [...prev, ...additions] : prev;
+      if (additions.length) {
+        return [...prev, ...additions];
+      }
+      return prev;
     });
   }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const pushMessage = useCallback((msg: ChatMessage) => {
+    setChatMessages((prev) => [...prev, msg]);
+    onSendMessage(msg);
+  }, [onSendMessage]);
+
+  const handleAssistantDeltaUpdate = useCallback((text: string) => {
+    const cleaned = stripDuplicatedAssistantEcho(text);
+    setPendingAssistantText(cleaned);
+  }, []);
+
+  const handleAssistantCompletion = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const cleaned = stripDuplicatedAssistantEcho(trimmed);
+    if (!cleaned) return;
+    const msg: ChatMessage = {
+      id: `${Date.now()}-assistant`,
+      role: "assistant",
+      text: cleaned,
+      createdAt: new Date(),
+      wasStreamed: true,
+    };
+    pushMessage(msg);
+    setPendingAssistantText("");
+  }, [pushMessage]);
+
+  const {
+    isReady: isTextReady,
+    isConnecting: isTextConnecting,
+    error: realtimeTextError,
+    sendTextMessage,
+    isResponding,
+  } =
+    useRealtimeTextSession({
+      contextId,
+      onAssistantDelta: handleAssistantDeltaUpdate,
+      onAssistantDone: handleAssistantCompletion,
+    });
+
+  useEffect(() => {
+    if (realtimeTextError) {
+      setTextSessionError(realtimeTextError);
+    }
+  }, [realtimeTextError]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputValue.trim()) {
-      onSendMessage(inputValue, false);
-      const chatMsg: ChatMessage = {
-        id: `${Date.now()}-user`,
-        role: "user",
-        text: inputValue.trim(),
-        createdAt: new Date(),
-      };
-      setChatMessages((prev) => [...prev, chatMsg]);
-      setInputValue('');
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+
+    const chatMsg: ChatMessage = {
+      id: `${Date.now()}-user`,
+      role: "user",
+      text: trimmed,
+      createdAt: new Date(),
+    };
+    pushMessage(chatMsg);
+    setInputValue('');
+
+    try {
+      await sendTextMessage(trimmed);
+      setTextSessionError(null);
+    } catch (err: any) {
+      console.error("[ChatInterface] sendTextMessage failed", err);
+      setTextSessionError(
+        err?.message || "Failed to reach the assistant. Please try again."
+      );
     }
   };
 
   const handleVoiceConversation = (userText: string) => {
     if (isMicMuted()) return; // ignore local voice transcripts while muted
-    console.log("[ChatInterface] handleVoiceConversation add message", { userText, muted: isMuted });
     const chatMsg: ChatMessage = {
       id: `${Date.now()}-user`,
       role: "user",
@@ -85,15 +277,21 @@ export function ChatInterface({
       isVoice: true,
       createdAt: new Date(),
     };
-    setChatMessages((prev) => [...prev, chatMsg]);
+    pushMessage(chatMsg);
   };
 
+  const isChatAvailable = Boolean(contextId);
+  const isSendDisabled =
+    !inputValue.trim() || !isChatAvailable || !isTextReady || isResponding;
+
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-full font-[var(--font-roboto)]">
       {/* Chat Header */}
       <div
-        className={`border-b px-4 py-3 flex items-center gap-3 ${
-          isDarkMode ? 'bg-neutral-900 border-neutral-700' : 'bg-white border-slate-200'
+        className={`border-b px-4 py-3 flex items-center gap-3 sticky top-17.5 z-10 backdrop-blur-md ${
+          isDarkMode
+            ? "bg-neutral-900/80 border-white/10"
+            : "bg-white/80 border-white/50"
         }`}
       >
         <Button
@@ -173,72 +371,104 @@ export function ChatInterface({
 
       {/* Input Area */}
       <div
-        className={`border-t p-4 ${
+        className={`border-t p-4 sticky bottom-0 z-10 ${
           isDarkMode ? "bg-neutral-900 border-neutral-700" : "bg-white border-slate-200"
         }`}
       >
-        {isVoiceChatActive ? (
-          <VoiceChat
-            onConversationUpdate={handleVoiceConversation}
-            onClose={() => setIsVoiceChatActive(false)}
-            isDarkMode={isDarkMode}
-            onStartCall={async () => {
-              setPendingAssistantText("");
-              if (callRef.current) await callRef.current.start();
-            }}
-            onEndCall={() => {
-              callRef.current?.stop();
-              setIsVoiceChatActive(false);
-              setIsRealtimeInCall(false);
-              if (pendingAssistantText.trim()) {
-                const msg: ChatMessage = {
-                  id: `${Date.now()}-assistant`,
-                  role: "assistant",
-                  text: pendingAssistantText.trim(),
-                  createdAt: new Date(),
-                };
-                setChatMessages((prev) => [...prev, msg]);
-              }
-              setPendingAssistantText("");
-            }}
-          onToggleMute={(mute) => {
-            console.log("[ChatInterface] onToggleMute", { mute });
-            setIsMuted(mute);
-            if (mute) callRef.current?.mute();
-            else callRef.current?.unmute();
-            }}
-            isCallActive={isRealtimeInCall}
-            isMuted={isMuted}
-            modelTranscript={pendingAssistantText}
-          />
-        ) : (
-          <div className="flex flex-col gap-3">
-            <form onSubmit={handleSubmit} className="flex items-center gap-2">
-              <Input
-                type="text"
-                placeholder="Type your message..."
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                className={`w-full ${
-                  isDarkMode
-                    ? "bg-neutral-800 border-neutral-600 text-white placeholder:text-slate-500"
-                    : ""
-                }`}
+        <AnimatePresence initial={false} mode="wait">
+          {isVoiceChatActive ? (
+            <motion.div
+              key="voice-chat"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 24 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            >
+              <VoiceChat
+                onConversationUpdate={handleVoiceConversation}
+                onClose={() => setIsVoiceChatActive(false)}
+                isDarkMode={isDarkMode}
+                onStartCall={async () => {
+                  setPendingAssistantText("");
+                  if (callRef.current) await callRef.current.start();
+                }}
+                onEndCall={() => {
+                  callRef.current?.stop();
+                  setIsVoiceChatActive(false);
+                  setIsRealtimeInCall(false);
+                  const finalText = stripDuplicatedAssistantEcho(
+                    pendingAssistantText.trim(),
+                  );
+                  if (finalText) {
+                    const msg: ChatMessage = {
+                      id: `${Date.now()}-assistant`,
+                      role: "assistant",
+                      text: finalText,
+                      createdAt: new Date(),
+                      wasStreamed: true,
+                    };
+                    pushMessage(msg);
+                  }
+                  setPendingAssistantText("");
+                }}
+                onToggleMute={(mute) => {
+                  setIsMuted(mute);
+                  if (mute) callRef.current?.mute();
+                  else callRef.current?.unmute();
+                }}
+                isCallActive={isRealtimeInCall}
+                isMuted={isMuted}
+                modelTranscript={pendingAssistantText}
               />
-              <Button
-                type="button"
-                size="icon"
-                variant={isVoiceChatActive ? "default" : "outline"}
-                onClick={() => setIsVoiceChatActive(true)}
-              >
-                <Mic className="w-4 h-4" />
-              </Button>
-              <Button type="submit" size="icon" disabled={!inputValue.trim()}>
-                <Send className="w-4 h-4" />
-              </Button>
-            </form>
-          </div>
-        )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="text-input"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="flex flex-col gap-3"
+            >
+              <form onSubmit={handleSubmit} className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  placeholder="Type your message..."
+                  value={inputValue}
+                  disabled={!isChatAvailable}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  className={`w-full ${
+                    isDarkMode
+                      ? "bg-neutral-800 border-neutral-600 text-white placeholder:text-slate-500"
+                      : ""
+                  }`}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={isVoiceChatActive ? "default" : "outline"}
+                  onClick={() => setIsVoiceChatActive(true)}
+                >
+                  <Mic className="w-4 h-4" />
+                </Button>
+                <Button type="submit" size="icon" disabled={isSendDisabled}>
+                  <Send className="w-4 h-4" />
+                </Button>
+              </form>
+              {isTextConnecting && isChatAvailable && (
+                <p className="text-xs text-slate-500">Connecting to realtime chat…</p>
+              )}
+              {!isChatAvailable && (
+                <p className="text-xs text-slate-500">
+                  Upload a document or video to start chatting.
+                </p>
+              )}
+              {textSessionError && (
+                <p className="text-xs text-red-500">{textSessionError}</p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       {/* Hidden realtime call control to drive OpenAI audio while using the full-screen overlay */}
       <div className="hidden">
@@ -248,21 +478,8 @@ export function ChatInterface({
           isDarkMode={isDarkMode}
           onCallChange={setIsRealtimeInCall}
           onAssistantDelta={setPendingAssistantText}
-          onAssistantDone={(text) => {
-            if (!text.trim()) return;
-            const msg: ChatMessage = {
-              id: `${Date.now()}-assistant`,
-              role: "assistant",
-              text: text.trim(),
-              createdAt: new Date(),
-            };
-            setChatMessages((prev) => [...prev, msg]);
-            setPendingAssistantText("");
-          }}
+          onAssistantDone={handleAssistantCompletion}
           onUserFinal={(text) => {
-            console.log("[ChatInterface] onUserFinal received", { text });
-            // RealtimeCallButton already filters muted turns before firing this callback
-            console.log("[ChatInterface] onUserFinal adding message to chat", { text });
             const msg: ChatMessage = {
               id: `${Date.now()}-user`,
               role: "user",
@@ -270,7 +487,7 @@ export function ChatInterface({
               isVoice: true,
               createdAt: new Date(),
             };
-            setChatMessages((prev) => [...prev, msg]);
+            pushMessage(msg);
             // Clear any pending assistant text so the next assistant turn starts clean
             setPendingAssistantText("");
           }}

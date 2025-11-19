@@ -5,9 +5,11 @@
  * keeps local message state, and flips between the upload wizard and the chat
  * screen. If you can explain this file, you can explain the entire app.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { UploadedContent, ChatMessage } from "@/types/chat";
 import { FileText, Youtube, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 import {
   Tabs,
   TabsContent,
@@ -21,20 +23,29 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 
 export default function App() {
-  const [uploadedContent, setUploadedContent] = useState<
-    UploadedContent[]
-  >([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeContent, setActiveContent] =
     useState<UploadedContent | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<"document" | "youtube">("document");
+  const [hasStarted, setHasStarted] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    root.classList.toggle("dark", isDarkMode);
+    body?.classList.toggle("dark", isDarkMode);
+    return () => {
+      root.classList.remove("dark");
+      body?.classList.remove("dark");
+    };
+  }, [isDarkMode]);
+
   const resetToHome = () => {
     setActiveContent(null);
     setMessages([]);
+    setHasStarted(true);
   };
-
-    console.log("Active contextId:", activeContent?.contextId);
-
  const handleDocumentUpload = async (file: File) => {
   // 1) Send the file to the backend
   const formData = new FormData();
@@ -73,13 +84,12 @@ export default function App() {
       preview: data.preview,
     };
 
-    setUploadedContent((prev) => [...prev, newContent]);
     setActiveContent(newContent);
 
     // 3) System message that includes a short preview
     const previewSnippet =
       typeof data.preview === "string"
-        ? data.preview.slice(0, 500)
+        ? data.preview.slice(0, 1000)
         : "";
 
     const systemMessage: ChatMessage = {
@@ -105,81 +115,57 @@ export default function App() {
   }
 };
 
-const handleYouTubeAdd = async (url: string, title: string) => {
-  try {
-    const res = await fetch("/api/youtube-transcript", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
+const handleYouTubeAdd = async (url: string, fallbackTitle: string) => {
+  const res = await fetch("/api/youtube-transcript", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
 
-    const data = await res.json();
+  const data = await res.json();
 
-    if (!res.ok) {
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: "assistant",
-        text:
-          data.error ||
-          `Sorry, I could not fetch the transcript for that YouTube video. Please try another link.`,
-        createdAt: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      return;
-    }
-
-    const newContent: UploadedContent = {
-      id: Date.now().toString(),
-      type: "youtube",
-      name: title,
-      url,
-      timestamp: new Date(),
-      contextId: data.contextId,
-      preview: data.preview,
-    };
-
-    setUploadedContent((prev) => [...prev, newContent]);
-    setActiveContent(newContent);
-
-    const previewSnippet =
-      typeof data.preview === "string" ? data.preview.slice(0, 500) : "";
-
-    const systemMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      text: `Loaded the transcript for "${title}" and it’s ready for questions. Here’s a quick preview.`,
-      preview: previewSnippet,
-      totalChars: data.totalChars,
-      createdAt: new Date(),
-    };
-
-    setMessages((prev) => [...prev, systemMessage]);
-  } catch (err) {
-    console.error("YouTube add error", err);
-    const errorMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "assistant",
-      text:
-        "Something went wrong while processing the YouTube link. Please check your connection and try again.",
-      createdAt: new Date(),
-    };
-    setMessages((prev) => [...prev, errorMessage]);
+  if (!res.ok) {
+    throw new Error(
+      data.error ||
+        `Sorry, I could not fetch the transcript for that YouTube video. Please try another link.`,
+    );
   }
+
+  const resolvedTitle =
+    data.metadata?.title?.trim() || fallbackTitle || "YouTube Video";
+
+  const newContent: UploadedContent = {
+    id: Date.now().toString(),
+    type: "youtube",
+    name: resolvedTitle,
+    url,
+    timestamp: new Date(),
+    contextId: data.contextId,
+    preview: data.preview,
+    authorName: data.metadata?.authorName ?? undefined,
+    subscriberCount: data.metadata?.subscriberCount ?? undefined,
+    publishedAt: data.metadata?.publishedAt ?? undefined,
+  };
+
+  setActiveContent(newContent);
+
+  const previewSnippet =
+    typeof data.preview === "string" ? data.preview.slice(0, 1000) : "";
+
+  const systemMessage: ChatMessage = {
+    id: (Date.now() + 1).toString(),
+    role: "assistant",
+    text: `Loaded the transcript for "${resolvedTitle}" and it’s ready for questions. Here’s a quick preview.`,
+    preview: previewSnippet,
+    totalChars: data.totalChars,
+    createdAt: new Date(),
+  };
+
+  setMessages((prev) => [...prev, systemMessage]);
 };
 
-  const handleSendMessage = (
-    content: string,
-    isVoice: boolean = false,
-  ) => {
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      text: content,
-      createdAt: new Date(),
-      isVoice,
-    };
-    setMessages((prev) => [...prev, userMessage]);
+  const handleSendMessage = (message: ChatMessage) => {
+    setMessages((prev) => [...prev, message]);
   };
 
 
@@ -192,49 +178,90 @@ const handleYouTubeAdd = async (url: string, title: string) => {
         : 'bg-gradient-to-b from-slate-50 to-slate-100'
     }`}>
       {/* Header */}
-      <header className={`border-b sticky top-0 z-10 shadow-sm ${
-        isDarkMode 
-          ? 'bg-neutral-900 border-neutral-700' 
-          : 'bg-white border-slate-200'
-      }`}>
-        <div className="px-4 py-4 flex items-start justify-between">
-          <div className="flex-1">
+      {hasStarted && (
+        <header
+          className={`sticky top-0 z-20 border-b ${
+            isDarkMode
+              ? "bg-neutral-900/80 border-white/10"
+              : "bg-white/80 border-white/40"
+          } shadow-sm backdrop-blur-lg transition-colors`}
+        >
+          <div className="px-4 py-3 flex items-center justify-between">
             <button
               type="button"
               onClick={resetToHome}
-              className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-neutral-500 rounded-md"
+              className="flex items-center gap-2 focus:outline-none rounded-md"
             >
-              <h1 className={`flex items-center gap-2 ${
-                isDarkMode ? 'text-white' : 'text-slate-900'
-              }`}>
-                <MessageSquare className="w-6 h-6 text-blue-600" />
+              <h1
+                className={`flex items-center gap-2 text-lg font-semibold ${
+                  isDarkMode ? "text-white" : "text-slate-900"
+                }`}
+              >
+                <MessageSquare className="w-5 h-5 text-blue-500" />
                 EchoChat
               </h1>
             </button>
-            <p className={`text-sm mt-1 ${
-              isDarkMode ? 'text-slate-400' : 'text-slate-600'
-            }`}>
-              Chat with your documents and videos
-            </p>
+            <div className="rounded-xl px-2.5 py-1 bg-slate-100/70 dark:bg-white/10 border border-white/40 dark:border-white/10">
+              <ThemeToggle
+                isDark={isDarkMode}
+                onToggle={() => setIsDarkMode(!isDarkMode)}
+              />
+            </div>
           </div>
-          <ThemeToggle isDark={isDarkMode} onToggle={() => setIsDarkMode(!isDarkMode)} />
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        {!hasContent ? (
-          // Upload Screen
-          <div className="flex-1 px-4 py-6">
-            <Tabs defaultValue="document" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="document" className="gap-2">
-                  <FileText className="w-4 h-4" />
-                  Document
-                </TabsTrigger>
-                <TabsTrigger value="youtube" className="gap-2">
-                  <Youtube className="w-4 h-4" />
-                  YouTube
+      {!hasStarted ? (
+        <motion.main
+          className="flex-1 flex items-center justify-center px-6 py-16"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: "easeOut" }}
+        >
+          <motion.div
+            className={`max-w-xl mx-auto text-center space-y-6 ${
+              isDarkMode ? "text-white" : "text-slate-900"
+            }`}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.45 }}
+          >
+            <p className="text-xs uppercase tracking-[0.4em] text-slate-500">
+              Voice-first AI
+            </p>
+            <h2 className="text-4xl font-semibold">EchoDoc</h2>
+            <p className="text-lg text-slate-600 dark:text-slate-300">
+              Drop in a PDF or YouTube link and chat through it like you&rsquo;re on a quick call
+              with a teammate—summaries, clarifications, and playful banter included.
+            </p>
+            <Button
+              size="lg"
+              className="px-8 py-6 text-base"
+              onClick={() => setHasStarted(true)}
+            >
+              Get started
+            </Button>
+          </motion.div>
+        </motion.main>
+      ) : (
+        <main className="flex-1 flex flex-col">
+          {!hasContent ? (
+            // Upload Screen
+            <div className="flex-1 px-4 py-4 sm:py-6">
+              <Tabs
+                value={activeTab}
+                onValueChange={(val) => setActiveTab(val as "document" | "youtube")}
+                className="w-full space-y-6"
+              >
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="document" className="gap-2">
+                    <FileText className="w-4 h-4" />
+                    Document
+                  </TabsTrigger>
+                  <TabsTrigger value="youtube" className="gap-2">
+                    <Youtube className="w-4 h-4" />
+                    YouTube
                 </TabsTrigger>
               </TabsList>
 
@@ -243,25 +270,26 @@ const handleYouTubeAdd = async (url: string, title: string) => {
                   onUpload={handleDocumentUpload}
                   isDarkMode={isDarkMode}
                 />
-              </TabsContent>
+                </TabsContent>
 
-              <TabsContent value="youtube">
-                <YouTubeInput onAdd={handleYouTubeAdd} isDarkMode={isDarkMode} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        ) : (
-          // Chat Screen
-          <ChatInterface
-            messages={messages}
-            activeContent={activeContent}
-            onSendMessage={handleSendMessage}
-            onBackToUpload={resetToHome}
-            isDarkMode={isDarkMode}
-            contextId={activeContent?.contextId ?? null}
-          />
-        )}
-      </main>
+                <TabsContent value="youtube">
+                  <YouTubeInput onAdd={handleYouTubeAdd} isDarkMode={isDarkMode} />
+                </TabsContent>
+              </Tabs>
+            </div>
+          ) : (
+            // Chat Screen
+            <ChatInterface
+              messages={messages}
+              activeContent={activeContent}
+              onSendMessage={handleSendMessage}
+              onBackToUpload={resetToHome}
+              isDarkMode={isDarkMode}
+              contextId={activeContent?.contextId ?? null}
+            />
+          )}
+        </main>
+      )}
     </div>
   );
 }

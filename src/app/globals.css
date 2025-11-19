@@ -128,9 +128,11 @@
     @apply border-border outline-ring/50;
   }
 
-  body {
-    @apply bg-background text-foreground;
-  }
+body {
+  @apply bg-background text-foreground;
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: var(--font-size);
+}
 
   @keyframes pulse {
     0% { transform: scaleY(0.6); }
