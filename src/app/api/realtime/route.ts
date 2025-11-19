@@ -22,11 +22,6 @@ export async function POST(req: NextRequest) {
       | { contextId?: string }
       | null;
 
-    console.log("[Realtime API] Incoming request", {
-      hasBody: !!body,
-      hasContextId: !!body?.contextId,
-    });
-
     if (!body || !body.contextId) {
       console.warn("[Realtime API] Missing contextId");
       return NextResponse.json(
@@ -57,6 +52,10 @@ export async function POST(req: NextRequest) {
     }
 
     const trimmed = text.slice(0, 12000);
+    const instructions =
+      "You are an assistant that helps the user talk to a document or YouTube video. " +
+      "Use this text as your main reference when answering:\n\n" +
+      trimmed;
 
     await logRealtime("Preparing session config", {
       contextId,
@@ -68,17 +67,13 @@ export async function POST(req: NextRequest) {
       session: {
         type: "realtime",
         model: "gpt-realtime-mini",
-        instructions:
-          "You are an assistant that helps the user talk to a document or YouTube video. " +
-          "Use this text as your main reference when answering:\n\n" +
-          trimmed,
+        instructions,
         audio: {
           output: { voice: "marin" },
         },
       },
     };
 
-    console.log("[Realtime API] Requesting OpenAI realtime client secret");
     const resp = await fetch(
       "https://api.openai.com/v1/realtime/client_secrets",
       {
@@ -110,8 +105,6 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await resp.json();
-
-    console.log("[Realtime API] Successfully generated client secret");
     await logRealtime("Client secret created", {
       contextId,
       expiresAt: data?.expires_at,

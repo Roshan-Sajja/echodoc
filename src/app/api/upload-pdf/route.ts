@@ -8,8 +8,6 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData().catch(() => null);
 
-    console.log("[Upload PDF API] Incoming request", { hasFormData: !!formData });
-
     if (!formData) {
       console.warn("[Upload PDF API] Invalid form data");
       return NextResponse.json(
@@ -28,6 +26,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const maxBytes = 25 * 1024 * 1024; // 25 MB
+    if (file.size > maxBytes) {
+      console.warn("[Upload PDF API] File too large", { size: file.size });
+      return NextResponse.json(
+        { error: "PDF files must be 25MB or smaller." },
+        { status: 400 },
+      );
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -42,11 +49,6 @@ export async function POST(req: NextRequest) {
     }
 
     const contextId = saveContext(text);
-
-    console.log("[Upload PDF API] Successfully processed PDF", {
-      contextId,
-      totalChars: text.length,
-    });
 
     return NextResponse.json({
       contextId,
