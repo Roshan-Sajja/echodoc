@@ -399,6 +399,10 @@ export function VoiceChat({
   return (
     <motion.div
       className={`fixed inset-0 z-50 flex flex-col ${containerBg}`}
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+      }}
       initial={{ opacity: 0, y: 32 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 32 }}
