@@ -12,6 +12,9 @@ export interface UploadedContent {
 
   contextId?: string;
   preview?: string;
+  authorName?: string;
+  subscriberCount?: string;
+  publishedAt?: string;
 }
 
 export interface ChatMessage {
@@ -22,4 +25,5 @@ export interface ChatMessage {
   isVoice?: boolean;
   preview?: string;
   totalChars?: number;
+  wasStreamed?: boolean;
 }
