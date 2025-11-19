@@ -35,26 +35,19 @@ export async function POST(req: NextRequest) {
 
     try {
       const info = await ytdl.getBasicInfo(url);
-      if (!info?.videoDetails?.videoId) {
-        throw new Error("Missing video details");
+      if (info?.videoDetails?.videoId) {
+        videoMeta = {
+          title: info.videoDetails?.title,
+          authorName:
+            info.videoDetails?.author?.name ?? info.videoDetails?.ownerChannelName,
+          subscriberCount:
+            info.videoDetails?.author?.subscriber_count?.toString() ?? undefined,
+          publishedAt: info.videoDetails?.publishDate,
+        };
       }
-      videoMeta = {
-        title: info.videoDetails?.title,
-        authorName:
-          info.videoDetails?.author?.name ?? info.videoDetails?.ownerChannelName,
-        subscriberCount:
-          info.videoDetails?.author?.subscriber_count?.toString() ?? undefined,
-        publishedAt: info.videoDetails?.publishDate,
-      };
     } catch (err: any) {
-      return NextResponse.json(
-        {
-          error:
-            err?.message ||
-            "That YouTube video is unavailable or private.",
-        },
-        { status: 400 },
-      );
+      console.warn("[YouTube Transcript API] Failed to fetch metadata via ytdl", err);
+      // Continue without metadata rather than failing the whole request
     }
 
     if (
