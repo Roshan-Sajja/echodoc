@@ -26,5 +26,6 @@ export interface ChatMessage {
   isVoice?: boolean;
   preview?: string;
   totalChars?: number;
+  totalWords?: number;
   wasStreamed?: boolean;
 }

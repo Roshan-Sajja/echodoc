@@ -5,6 +5,7 @@
  * keeps local message state, and flips between the upload wizard and the chat
  * screen. If you can explain this file, you can explain the entire app.
  */
+import { Analytics } from "@vercel/analytics/next"
 import { useEffect, useState } from "react";
 import type { UploadedContent, ChatMessage } from "@/types/chat";
 import { FileText, Youtube, MessageSquare } from "lucide-react";
@@ -99,6 +100,7 @@ export default function App() {
       text: `I processed "${file.name}" and loaded it as context. Here’s a quick preview of what I found.`,
       preview: previewSnippet,
       totalChars: data.totalChars,
+      totalWords: data.totalWords,
       createdAt: new Date(),
     };
 
@@ -160,6 +162,7 @@ const handleYouTubeAdd = async (url: string, fallbackTitle: string) => {
     text: `Loaded the transcript for "${resolvedTitle}" and it’s ready for questions. Here’s a quick preview.`,
     preview: previewSnippet,
     totalChars: data.totalChars,
+    totalWords: data.totalWords,
     createdAt: new Date(),
   };
 

@@ -59,22 +59,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const trimmed = text.slice(0, 12000);
+    const wordCount = text.trim().match(/\S+/g)?.length ?? 0;
+    const selectedModel =
+      wordCount <= 12000 ? "gpt-realtime-mini" : "gpt-realtime";
     const instructions =
       "You are an assistant that helps the user talk to a document or YouTube video. " +
       "Use this text as your main reference when answering:\n\n" +
-      trimmed;
+      text;
 
     await logRealtime("Preparing session config", {
       contextId,
       contextLength: text.length,
-      trimmedLength: trimmed.length,
+      referenceLength: text.length,
+      wordCount,
+      selectedModel,
     });
 
     const sessionConfig = {
       session: {
         type: "realtime",
-        model: "gpt-realtime-mini",
+        model: selectedModel,
         instructions,
         audio: {
           output: { voice: "marin" },

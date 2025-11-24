@@ -15,6 +15,17 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const hasPreview = Boolean(message.preview);
   const previewLength = message.preview?.length ?? 0;
+  const previewWordCount = message.preview?.match(/\S+/g)?.length ?? 0;
+  const totalWordCount =
+    typeof message.totalWords === "number" ? message.totalWords : null;
+  const totalCharCount =
+    typeof message.totalChars === "number" ? message.totalChars : null;
+  const hasMoreTextThanPreview =
+    totalWordCount !== null
+      ? totalWordCount > previewWordCount
+      : totalCharCount !== null
+        ? totalCharCount > previewLength
+        : false;
   const [expanded, setExpanded] = useState(false);
   const textItalic = message.isVoice ? "italic" : "";
   const voiceLabelClasses = `${isDarkMode ? 'text-slate-300' : 'text-slate-600'} text-xs flex items-center gap-1 ${
@@ -82,10 +93,14 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
                 }`}
               >
                 Preview
-                {previewLength
-                  ? ` · first ${previewLength.toLocaleString()} chars`
+                {previewWordCount
+                  ? ` · first ${previewWordCount.toLocaleString()} words`
                   : ''}
-                {message.totalChars ? ` · ${message.totalChars.toLocaleString()} total` : ''}
+                {totalWordCount !== null
+                  ? ` · ${totalWordCount.toLocaleString()} total words`
+                  : totalCharCount !== null
+                    ? ` · ${totalCharCount.toLocaleString()} total chars`
+                    : ''}
               </p>
               <button
                 type="button"
@@ -120,7 +135,7 @@ export function MessageBubble({ message, isDarkMode }: MessageBubbleProps) {
                 />
               )}
             </div>
-            {message.totalChars && message.totalChars > previewLength && (
+            {hasMoreTextThanPreview && (
               <p
                 className={`text-[11px] ${
                   isUser ? 'text-neutral-200/90' : isDarkMode ? 'text-slate-400' : 'text-slate-500'

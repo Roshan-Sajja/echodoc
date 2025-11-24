@@ -10,6 +10,7 @@ import path from "path";
 const contexts = new Map<string, string>();
 const logDir = path.join(process.cwd(), "logs");
 const persistFile = path.join(logDir, "contexts.json");
+let canPersistToDisk = true;
 
 // Load persisted contexts on startup
 try {
@@ -19,10 +20,12 @@ try {
     Object.entries(parsed).forEach(([k, v]) => contexts.set(k, v));
   }
 } catch (err) {
+  canPersistToDisk = false;
   console.error("[ContextStore] Failed to load persisted contexts", err);
 }
 
 function persist() {
+  if (!canPersistToDisk) return;
   try {
     mkdirSync(logDir, { recursive: true });
     const obj: Record<string, string> = {};
@@ -31,7 +34,8 @@ function persist() {
     });
     writeFileSync(persistFile, JSON.stringify(obj), "utf8");
   } catch (err) {
-    console.error("[ContextStore] Failed to persist contexts", err);
+    canPersistToDisk = false;
+    console.warn("[ContextStore] Disabling disk persistence (unavailable)", err);
   }
 }
 
@@ -47,6 +51,9 @@ export function getContext(id: string): string | undefined {
   if (existing) return existing;
 
   // Fallback: attempt to reload from disk in case this worker missed a previous save
+  if (!canPersistToDisk) {
+    return contexts.get(id);
+  }
   try {
     if (existsSync(persistFile)) {
       const raw = readFileSync(persistFile, "utf8");
@@ -54,7 +61,8 @@ export function getContext(id: string): string | undefined {
       Object.entries(parsed).forEach(([k, v]) => contexts.set(k, v));
     }
   } catch (err) {
-    console.error("[ContextStore] Failed to reload contexts from disk", err);
+    canPersistToDisk = false;
+    console.warn("[ContextStore] Disabling disk reloads (unavailable)", err);
   }
 
   return contexts.get(id);

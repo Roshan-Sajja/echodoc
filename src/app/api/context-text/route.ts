@@ -25,9 +25,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const trimmed = text.slice(0, 12000);
-
-    return NextResponse.json({ text: trimmed });
+    return NextResponse.json({ text });
   } catch (err) {
     console.error("[Context Text API] Unexpected error", err);
     return NextResponse.json(
