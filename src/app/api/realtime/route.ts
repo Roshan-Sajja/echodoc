@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/contextStore";
+import { getOptimizedContext } from "@/lib/contextRetrieval";
 import { appendFile, mkdir } from "fs/promises";
 import path from "path";
 
@@ -21,7 +22,7 @@ async function logRealtime(message: string, data?: any) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string; contextText?: string }
+      | { contextId?: string; contextText?: string; query?: string }
       | null;
 
     if (!body || (!body.contextId && !body.contextText)) {
@@ -59,20 +60,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const wordCount = text.trim().match(/\S+/g)?.length ?? 0;
+    // OPTIMIZATION: Use chunking to reduce token usage
+    const optimizedText = getOptimizedContext(text, body.query || null, 3);
+    const wordCount = optimizedText.trim().match(/\S+/g)?.length ?? 0;
     const selectedModel =
       wordCount <= 12000 ? "gpt-realtime-mini" : "gpt-realtime";
+    
     const instructions =
       "You are an assistant that helps the user talk to a document or YouTube video. " +
-      "Use this text as your main reference when answering:\n\n" +
-      text;
+      "The reference chunks below ARE the document/video content itself (the PDF text or YouTube transcript). " +
+      "When users refer to 'the PDF', 'the document', 'the video', or 'the transcript', they mean THIS content. " +
+      "You have full access to it. Use ONLY these chunks when answering. " +
+      "If the answer isn't in these chunks, say you don't have that information.\n\n" +
+      "REFERENCE CHUNKS (This IS the document/video content):\n" +
+      optimizedText;
 
     await logRealtime("Preparing session config", {
       contextId,
       contextLength: text.length,
-      referenceLength: text.length,
+      optimizedLength: optimizedText.length,
+      reductionPercent: Math.round(
+        ((text.length - optimizedText.length) / text.length) * 100
+      ),
       wordCount,
       selectedModel,
+      hadQuery: Boolean(body.query),
     });
 
     const sessionConfig = {

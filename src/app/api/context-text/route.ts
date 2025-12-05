@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getContext } from "@/lib/contextStore";
+import { getOptimizedContext } from "@/lib/contextRetrieval";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string }
+      | { contextId?: string; query?: string }
       | null;
 
     if (!body?.contextId) {
@@ -25,7 +26,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ text });
+    // OPTIMIZATION: Return optimized chunks based on query
+    const optimizedText = getOptimizedContext(text, body.query || null, 3);
+
+    return NextResponse.json({ 
+      text: optimizedText,
+      originalLength: text.length,
+      optimizedLength: optimizedText.length,
+    });
   } catch (err) {
     console.error("[Context Text API] Unexpected error", err);
     return NextResponse.json(

@@ -354,6 +354,35 @@ export function useRealtimeTextSession({
         contextId: contextId ?? "inline-context",
         text: trimmed,
       });
+      
+      // OPTIMIZATION: Update instructions with query-relevant chunks
+      if (contextId) {
+        try {
+          const ctxRes = await fetch("/api/context-text", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contextId, query: trimmed }),
+          });
+          if (ctxRes.ok) {
+            const { text: optimizedText } = await ctxRes.json();
+            dc.send(
+              JSON.stringify({
+                type: "session.update",
+                session: {
+                  type: "realtime",
+                  instructions: buildContextInstructions(optimizedText, {
+                    passiveOnly: true,
+                  }),
+                },
+              }),
+            );
+          }
+        } catch (err) {
+          console.warn("[RealtimeText] Failed to update instructions with query", err);
+          // Continue anyway - session already has initial instructions
+        }
+      }
+
       setError(null);
       bufferRef.current = "";
       assistantDeltaRef.current?.("");
