@@ -29,7 +29,16 @@ export async function POST(req: NextRequest) {
     // OPTIMIZATION: Return optimized chunks based on query
     const optimizedText = getOptimizedContext(text, body.query || null, 3);
 
-    return NextResponse.json({ 
+    console.info("[ContextText] optimized context", {
+      contextId: body.contextId,
+      hadQuery: Boolean(body.query),
+      optimizedLength: optimizedText.length,
+      originalLength: text.length,
+      // Short preview only, to confirm which chunks are selected
+      preview: optimizedText.slice(0, 200),
+    });
+
+    return NextResponse.json({
       text: optimizedText,
       originalLength: text.length,
       optimizedLength: optimizedText.length,

@@ -85,6 +85,8 @@ export async function POST(req: NextRequest) {
       wordCount,
       selectedModel,
       hadQuery: Boolean(body.query),
+      // Safe, short preview of the chunks sent to the model
+      optimizedPreview: optimizedText.slice(0, 200),
     });
 
     const sessionConfig = {

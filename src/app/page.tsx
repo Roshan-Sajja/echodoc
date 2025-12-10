@@ -28,7 +28,8 @@ export default function App() {
   const [activeContent, setActiveContent] =
     useState<UploadedContent | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<"document" | "youtube">("document");
+  // Default to YouTube as the primary landing flow
+  const [activeTab, setActiveTab] = useState<"document" | "youtube">("youtube");
   const [hasStarted, setHasStarted] = useState(false);
 
   useEffect(() => {
@@ -237,7 +238,7 @@ const handleYouTubeAdd = async (url: string, fallbackTitle: string) => {
             </p>
             <h2 className="text-4xl font-semibold">EchoDoc</h2>
             <p className="text-lg text-slate-600 dark:text-slate-300">
-              Drop in a PDF or YouTube link and chat through it like you&rsquo;re on a quick call
+              Paste a YouTube link (or drop a PDF) and chat through it like you&rsquo;re on a quick call
               with a teammate—summaries, clarifications, and playful banter included.
             </p>
             <Button
@@ -260,26 +261,26 @@ const handleYouTubeAdd = async (url: string, fallbackTitle: string) => {
                 className="w-full space-y-6"
               >
                 <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="youtube" className="gap-2">
+                    <Youtube className="w-4 h-4" />
+                    YouTube
+                  </TabsTrigger>
                   <TabsTrigger value="document" className="gap-2">
                     <FileText className="w-4 h-4" />
                     Document
                   </TabsTrigger>
-                  <TabsTrigger value="youtube" className="gap-2">
-                    <Youtube className="w-4 h-4" />
-                    YouTube
-                </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="youtube">
+                <YouTubeInput onAdd={handleYouTubeAdd} isDarkMode={isDarkMode} />
+              </TabsContent>
 
               <TabsContent value="document">
                 <DocumentUpload
                   onUpload={handleDocumentUpload}
                   isDarkMode={isDarkMode}
                 />
-                </TabsContent>
-
-                <TabsContent value="youtube">
-                  <YouTubeInput onAdd={handleYouTubeAdd} isDarkMode={isDarkMode} />
-                </TabsContent>
+              </TabsContent>
               </Tabs>
             </div>
           ) : (
