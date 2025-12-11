@@ -64,67 +64,18 @@ function RealtimeCallButton(
 
   const appendWithSpacing = (current: string, delta: string) => current + `${delta}`;
 
-  // Send user text with a fresh instructions update that includes query-relevant chunks
-  const sendUserTextToSession = async (text: string) => {
-    if (!dcRef.current || dcRef.current.readyState !== "open") return;
-
-    // Before sending the user message, refresh instructions with query-specific chunks
-    try {
-      // Prefer inline contextText to avoid serverless instance mismatch
-      const ctxRes = await fetch("/api/context-text", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contextId,
-          contextText,
-          query: text,
-        }),
-      });
-
-      if (ctxRes.ok && dcRef.current?.readyState === "open") {
-        const { text: optimizedText } = await ctxRes.json();
-        dcRef.current.send(
-          JSON.stringify({
-            type: "session.update",
-            session: {
-              type: "realtime",
-              instructions: buildContextInstructions(optimizedText, {
-                passiveOnly: true,
-              }),
-            },
-          }),
-        );
-      }
-    } catch (err) {
-      console.warn("[Realtime Call] Failed to refresh instructions before sending user text", err);
-      // Continue anyway; initial instructions still exist
-    }
-
-    try {
-      const createEvent = {
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text }],
-        },
-      };
-      dcRef.current.send(JSON.stringify(createEvent));
-
-      const responseEvent = {
-        type: "response.create",
-        response: {
-          // let the model decide modalities (audio+text); specify text to ensure output text
-          output_modalities: ["text", "audio"],
-        },
-      };
-      dcRef.current.send(JSON.stringify(responseEvent));
-    } catch (err) {
-      console.error("[Realtime Call] Failed to send user text to session", err);
-    }
+  // Note: With server VAD, OpenAI auto-responds to voice input before we can update instructions.
+  // The initial session has 6 chunks loaded for broader coverage.
+  // This function is kept for logging/UI purposes but doesn't re-trigger a response
+  // since the model already responded via server VAD.
+  const sendUserTextToSession = (text: string) => {
+    // Server VAD auto-responds, so we don't need to send another response.create
+    // The user's speech is already transcribed and responded to.
+    // We just log this for debugging purposes.
+    console.log("[Realtime Call] User utterance captured:", text.slice(0, 100));
   };
 
-  const handleUserFinal = async (text: string, itemId?: string) => {
+  const handleUserFinal = (text: string, itemId?: string) => {
     const finalUser = text.trim();
     if (!finalUser) return;
 
@@ -143,7 +94,7 @@ function RealtimeCallButton(
       onUserFinal(finalUser);
     }
 
-    await sendUserTextToSession(finalUser);
+    sendUserTextToSession(finalUser);
   };
 
   const extractTranscriptFromItem = (item: any): string => {
@@ -249,12 +200,17 @@ function RealtimeCallButton(
         const dc = pc.createDataChannel("oai-events");
         dcRef.current = dc;
         dc.onopen = async () => {
-          // Fetch context text and update session instructions again to ensure the PDF/YT context is loaded
+          // Fetch context text and update session instructions with MORE chunks for voice
+          // Voice needs more chunks upfront because server VAD auto-responds before we can update per-query
           try {
             const ctxRes = await fetch("/api/context-text", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ contextId }),
+              body: JSON.stringify({ 
+                contextId, 
+                contextText, // Pass contextText for serverless reliability
+                maxChunks: 6, // More chunks for voice (covers more of the transcript)
+              }),
             });
             if (!ctxRes.ok) {
               console.error("[Realtime Call] Failed to fetch context text", { status: ctxRes.status });

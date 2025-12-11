@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string; contextText?: string; query?: string }
+      | { contextId?: string; contextText?: string; query?: string; maxChunks?: number }
       | null;
 
     if (!body?.contextId && !body?.contextText) {
@@ -32,7 +32,9 @@ export async function POST(req: NextRequest) {
     }
 
     // OPTIMIZATION: Return optimized chunks based on query
-    const optimizedText = getOptimizedContext(text, body.query || null, 3);
+    // maxChunks defaults to 3 for text chat, but voice can request more (e.g., 6)
+    const maxChunks = body.maxChunks ?? 3;
+    const optimizedText = getOptimizedContext(text, body.query || null, maxChunks);
 
     console.info("[ContextText] optimized context", {
       contextId: body.contextId,

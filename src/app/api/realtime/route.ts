@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     }
 
     // OPTIMIZATION: Use chunking to reduce token usage
-    const optimizedText = getOptimizedContext(text, body.query || null, 3);
+    // Voice sessions use 6 chunks for broader coverage (server VAD auto-responds before we can update per-query)
+    const optimizedText = getOptimizedContext(text, body.query || null, 6);
     const wordCount = optimizedText.trim().match(/\S+/g)?.length ?? 0;
     const selectedModel =
       wordCount <= 12000 ? "gpt-realtime-mini" : "gpt-realtime";
