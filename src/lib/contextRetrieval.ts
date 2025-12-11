@@ -24,15 +24,23 @@ export function chunkText(
 
 /**
  * Find the most relevant chunks based on keyword matching
- * Returns top N chunks sorted by relevance score, maintaining original order
+ * ALWAYS includes the first chunk (metadata) plus top relevant chunks
+ * Returns chunks sorted by relevance score, maintaining original order
  */
 export function findRelevantChunks(
   query: string,
   chunks: string[],
   maxChunks: number = 3,
 ): string[] {
-  if (!query.trim() || chunks.length === 0) {
-    // If no query, return first chunks (usually intro/summary)
+  if (chunks.length === 0) {
+    return [];
+  }
+
+  // ALWAYS include the first chunk (contains metadata like title, channel)
+  const firstChunk = chunks[0];
+  
+  if (!query.trim() || chunks.length <= maxChunks) {
+    // If no query or few chunks, return first N chunks
     return chunks.slice(0, Math.min(maxChunks, chunks.length));
   }
 
@@ -45,23 +53,29 @@ export function findRelevantChunks(
     return chunks.slice(0, Math.min(maxChunks, chunks.length));
   }
 
-  // Score each chunk based on keyword frequency
-  const scored = chunks.map((chunk, index) => {
+  // Score chunks AFTER the first one (first chunk is always included)
+  const remainingChunks = chunks.slice(1);
+  const scored = remainingChunks.map((chunk, index) => {
     const lowerChunk = chunk.toLowerCase();
     const score = queryWords.reduce((totalScore, word) => {
       const matches = (lowerChunk.match(new RegExp(word, "g")) || []).length;
       return totalScore + matches;
     }, 0);
 
-    return { chunk, index, score };
+    return { chunk, index: index + 1, score }; // index + 1 because we sliced from 1
   });
 
-  // Sort by score (highest first), take top N, then restore original order
-  return scored
+  // Sort by score (highest first), take top (maxChunks - 1) since first chunk is reserved
+  const topRelevant = scored
     .sort((a, b) => b.score - a.score)
-    .slice(0, maxChunks)
-    .sort((a, b) => a.index - b.index) // Maintain document order
+    .slice(0, maxChunks - 1);
+
+  // Combine first chunk with top relevant chunks, sort by original order
+  const selected = [{ chunk: firstChunk, index: 0, score: 0 }, ...topRelevant]
+    .sort((a, b) => a.index - b.index)
     .map((item) => item.chunk);
+
+  return selected;
 }
 
 /**
