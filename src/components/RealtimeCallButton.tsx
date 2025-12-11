@@ -64,8 +64,42 @@ function RealtimeCallButton(
 
   const appendWithSpacing = (current: string, delta: string) => current + `${delta}`;
 
-  const sendUserTextToSession = (text: string) => {
+  // Send user text with a fresh instructions update that includes query-relevant chunks
+  const sendUserTextToSession = async (text: string) => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
+
+    // Before sending the user message, refresh instructions with query-specific chunks
+    try {
+      // Prefer inline contextText to avoid serverless instance mismatch
+      const ctxRes = await fetch("/api/context-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contextId,
+          contextText,
+          query: text,
+        }),
+      });
+
+      if (ctxRes.ok && dcRef.current?.readyState === "open") {
+        const { text: optimizedText } = await ctxRes.json();
+        dcRef.current.send(
+          JSON.stringify({
+            type: "session.update",
+            session: {
+              type: "realtime",
+              instructions: buildContextInstructions(optimizedText, {
+                passiveOnly: true,
+              }),
+            },
+          }),
+        );
+      }
+    } catch (err) {
+      console.warn("[Realtime Call] Failed to refresh instructions before sending user text", err);
+      // Continue anyway; initial instructions still exist
+    }
+
     try {
       const createEvent = {
         type: "conversation.item.create",
@@ -90,7 +124,7 @@ function RealtimeCallButton(
     }
   };
 
-  const handleUserFinal = (text: string, itemId?: string) => {
+  const handleUserFinal = async (text: string, itemId?: string) => {
     const finalUser = text.trim();
     if (!finalUser) return;
 
@@ -109,7 +143,7 @@ function RealtimeCallButton(
       onUserFinal(finalUser);
     }
 
-    sendUserTextToSession(finalUser);
+    await sendUserTextToSession(finalUser);
   };
 
   const extractTranscriptFromItem = (item: any): string => {
