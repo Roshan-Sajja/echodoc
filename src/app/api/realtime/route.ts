@@ -22,7 +22,7 @@ async function logRealtime(message: string, data?: any) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string; contextText?: string; query?: string }
+      | { contextId?: string; contextText?: string; query?: string; mode?: "voice" | "text" }
       | null;
 
     if (!body || (!body.contextId && !body.contextText)) {
@@ -60,12 +60,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // OPTIMIZATION: Use chunking to reduce token usage
-    // Voice sessions use 6 chunks for broader coverage (server VAD auto-responds before we can update per-query)
-    const optimizedText = getOptimizedContext(text, body.query || null, 6);
-    const wordCount = optimizedText.trim().match(/\S+/g)?.length ?? 0;
+    // Voice mode: Send full transcript (no chunking) for best quality
+    // Text mode: Use chunking to reduce token usage
+    const isVoiceMode = body?.mode === "voice";
+    const optimizedText = isVoiceMode
+      ? text // Full transcript for voice
+      : getOptimizedContext(text, body.query || null, 3);
+    const charCount = optimizedText.length;
+    
+    // Model selection based on 60k character cutoff
+    // gpt-realtime-mini for < 60k chars, gpt-realtime for >= 60k chars
     const selectedModel =
-      wordCount <= 12000 ? "gpt-realtime-mini" : "gpt-realtime";
+      charCount < 60000 ? "gpt-realtime-mini" : "gpt-realtime";
     
     const instructions =
       "You are an assistant that helps the user talk to a document or YouTube video. " +
@@ -81,10 +87,11 @@ export async function POST(req: NextRequest) {
       contextId,
       contextLength: text.length,
       optimizedLength: optimizedText.length,
+      optimizedChars: charCount,
       reductionPercent: Math.round(
         ((text.length - optimizedText.length) / text.length) * 100
       ),
-      wordCount,
+      wordCount: optimizedText.trim().match(/\S+/g)?.length ?? 0,
       selectedModel,
       hadQuery: Boolean(body.query),
       // Safe, short preview of the chunks sent to the model

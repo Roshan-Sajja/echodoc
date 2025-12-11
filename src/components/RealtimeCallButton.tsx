@@ -3,7 +3,6 @@
 
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Mic, MicOff, Loader2 } from "lucide-react";
-import { buildContextInstructions } from "@/lib/instructions";
 
 interface RealtimeCallButtonProps {
   contextId: string | null;
@@ -49,6 +48,7 @@ function RealtimeCallButton(
   const modelTranscriptBufferRef = useRef("");
   const modelStreamTypeRef = useRef<"text" | "audio" | null>(null);
   const userTranscriptBufferRef = useRef("");
+  
 
   const logTranscriptionEvent = async (payload: any) => {
     try {
@@ -64,20 +64,18 @@ function RealtimeCallButton(
 
   const appendWithSpacing = (current: string, delta: string) => current + `${delta}`;
 
-  // Note: With server VAD, OpenAI auto-responds to voice input before we can update instructions.
-  // The initial session has 6 chunks loaded for broader coverage.
-  // This function is kept for logging/UI purposes but doesn't re-trigger a response
-  // since the model already responded via server VAD.
-  const sendUserTextToSession = (text: string) => {
-    // Server VAD auto-responds, so we don't need to send another response.create
-    // The user's speech is already transcribed and responded to.
-    // We just log this for debugging purposes.
-    console.log("[Realtime Call] User utterance captured:", text.slice(0, 100));
-  };
-
+  // Handle user's final transcription
+  // Note: Full transcript is loaded at session start, so no per-utterance context refresh needed
   const handleUserFinal = (text: string, itemId?: string) => {
     const finalUser = text.trim();
     if (!finalUser) return;
+
+    // Log final user text to server for terminal visibility
+    logTranscriptionEvent({
+      type: "user.final_text",
+      transcript: finalUser,
+      _debug: "user_final_text",
+    });
 
     if (itemId) {
       if (handledUserItemsRef.current.has(itemId)) {
@@ -93,8 +91,8 @@ function RealtimeCallButton(
     if (onUserFinal) {
       onUserFinal(finalUser);
     }
-
-    sendUserTextToSession(finalUser);
+    
+    console.log("[Realtime Call] User utterance:", finalUser.slice(0, 100));
   };
 
   const extractTranscriptFromItem = (item: any): string => {
@@ -161,7 +159,7 @@ function RealtimeCallButton(
       const res = await fetch("/api/realtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contextId, contextText }),
+        body: JSON.stringify({ contextId, contextText, mode: "voice" }),
       });
 
       if (!res.ok) {
@@ -196,40 +194,10 @@ function RealtimeCallButton(
       micTrackRef.current.enabled = !mutedRef.current;
       pc.addTrack(track);
 
-      // 5) Data channel for events (optional for now)
+      // 5) Data channel for events
         const dc = pc.createDataChannel("oai-events");
         dcRef.current = dc;
-        dc.onopen = async () => {
-          // Fetch context text and update session instructions with MORE chunks for voice
-          // Voice needs more chunks upfront because server VAD auto-responds before we can update per-query
-          try {
-            const ctxRes = await fetch("/api/context-text", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                contextId, 
-                contextText, // Pass contextText for serverless reliability
-                maxChunks: 6, // More chunks for voice (covers more of the transcript)
-              }),
-            });
-            if (!ctxRes.ok) {
-              console.error("[Realtime Call] Failed to fetch context text", { status: ctxRes.status });
-              return;
-            }
-            const { text } = await ctxRes.json();
-            if (dcRef.current?.readyState === "open") {
-              dcRef.current.send(
-                JSON.stringify({
-                  type: "session.update",
-                  session: {
-                    instructions: buildContextInstructions(text, { passiveOnly: true }),
-                  },
-                }),
-              );
-            }
-          } catch (err) {
-            console.error("[Realtime Call] Error refreshing instructions", err);
-          }
+        dc.onopen = () => {
       };
       dc.onerror = (event) => {
         console.error("[Realtime Call] Data channel error", event);
@@ -239,6 +207,7 @@ function RealtimeCallButton(
             const parsed = JSON.parse(event.data);
             const type = parsed?.type;
             if (type === "response.created") {
+              // Model is responding (server VAD auto-responds)
               modelStreamTypeRef.current = null;
               modelTranscriptBufferRef.current = "";
             }
@@ -247,8 +216,8 @@ function RealtimeCallButton(
               type === "conversation.item.input_audio_transcript.delta";
             const isUserDone =
               type === "conversation.item.input_audio_transcription.completed" ||
-            type === "conversation.item.input_audio_transcript.done" ||
-            type === "conversation.item.input_audio_transcript.completed";
+              type === "conversation.item.input_audio_transcript.done" ||
+              type === "conversation.item.input_audio_transcript.completed";
 
           if (isUserDelta) {
             logTranscriptionEvent(parsed);

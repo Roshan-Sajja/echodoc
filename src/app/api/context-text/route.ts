@@ -4,10 +4,17 @@ import { getOptimizedContext } from "@/lib/contextRetrieval";
 
 export const runtime = "nodejs";
 
+// This route is used for TEXT CHAT only
+// Voice calls load the full transcript directly via /api/realtime (no chunking)
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string; contextText?: string; query?: string; maxChunks?: number }
+      | {
+          contextId?: string;
+          contextText?: string;
+          query?: string;
+          maxChunks?: number;
+        }
       | null;
 
     if (!body?.contextId && !body?.contextText) {
@@ -31,19 +38,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // OPTIMIZATION: Return optimized chunks based on query
-    // maxChunks defaults to 3 for text chat, but voice can request more (e.g., 6)
+    // OPTIMIZATION: Return optimized chunks based on query for text chat
     const maxChunks = body.maxChunks ?? 3;
     const optimizedText = getOptimizedContext(text, body.query || null, maxChunks);
 
-    console.info("[ContextText] optimized context", {
-      contextId: body.contextId,
-      hadQuery: Boolean(body.query),
-      optimizedLength: optimizedText.length,
-      originalLength: text.length,
-      // Short preview only, to confirm which chunks are selected
-      preview: optimizedText.slice(0, 200),
-    });
+    console.info(`[ContextText] TEXT CHAT → ${optimizedText.length} chars (from ${text.length})`);
 
     return NextResponse.json({
       text: optimizedText,
