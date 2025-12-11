@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       "The reference chunks below ARE the document/video content itself (the PDF text or YouTube transcript). " +
       "When users refer to 'the PDF', 'the document', 'the video', or 'the transcript', they mean THIS content. " +
       "You have full access to it. Use ONLY these chunks when answering. " +
+      "Answer naturally without quoting or citing sources - never use formats like 'Text: \"...\"' or 'According to the document...'. " +
       "If the answer isn't in these chunks, say you don't have that information.\n\n" +
       "REFERENCE CHUNKS (This IS the document/video content):\n" +
       optimizedText;
