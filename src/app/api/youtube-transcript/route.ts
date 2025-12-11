@@ -1,9 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveContext } from "@/lib/contextStore";
 import { fetchYoutubeTranscriptViaService } from "@/lib/youtubeTranscriptIo";
-import ytdl from "ytdl-core";
 
 export const runtime = "nodejs";
+
+// Extract video ID from various YouTube URL formats
+function extractVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/shorts\/([^&\n?#]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+// Validate YouTube URL
+function isValidYouTubeUrl(url: string): boolean {
+  return extractVideoId(url) !== null;
+}
+
+// Fetch metadata using YouTube's free oEmbed API (no API key needed)
+async function fetchMetadataViaOEmbed(url: string): Promise<{
+  title?: string;
+  authorName?: string;
+}> {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const res = await fetch(oembedUrl, { cache: "no-store" });
+    if (!res.ok) return {};
+    const data = await res.json();
+    return {
+      title: data.title || undefined,
+      authorName: data.author_name || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { url } = body;
-    if (!ytdl.validateURL(url)) {
+    if (!isValidYouTubeUrl(url)) {
       return NextResponse.json(
         { error: "Please provide a valid YouTube video URL." },
         { status: 400 },
@@ -33,20 +69,15 @@ export async function POST(req: NextRequest) {
       publishedAt?: string;
     } = {};
 
+    // Use YouTube's oEmbed API for metadata (free, no API key, reliable)
     try {
-      const info = await ytdl.getBasicInfo(url);
-      if (info?.videoDetails?.videoId) {
-        videoMeta = {
-          title: info.videoDetails?.title,
-          authorName:
-            info.videoDetails?.author?.name ?? info.videoDetails?.ownerChannelName,
-          subscriberCount:
-            info.videoDetails?.author?.subscriber_count?.toString() ?? undefined,
-          publishedAt: info.videoDetails?.publishDate,
-        };
-      }
+      const oembedMeta = await fetchMetadataViaOEmbed(url);
+      videoMeta = {
+        title: oembedMeta.title,
+        authorName: oembedMeta.authorName,
+      };
     } catch (err: any) {
-      console.warn("[YouTube Transcript API] Failed to fetch metadata via ytdl", err);
+      console.warn("[YouTube Transcript API] Failed to fetch metadata via oEmbed", err);
       // Continue without metadata rather than failing the whole request
     }
 
