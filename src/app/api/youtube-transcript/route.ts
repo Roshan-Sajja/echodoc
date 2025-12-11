@@ -116,19 +116,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Put metadata at the BEGINNING so it's always in the first chunk
     const metadataSection = [
-      "",
       "----- YOUTUBE VIDEO METADATA -----",
-      `Source URL: ${url}`,
-      videoMeta.authorName ? `Channel: ${videoMeta.authorName}` : null,
+      videoMeta.title ? `Title: ${videoMeta.title}` : null,
+      videoMeta.authorName ? `Channel/Creator: ${videoMeta.authorName}` : null,
       videoMeta.subscriberCount ? `Subscribers: ${videoMeta.subscriberCount}` : null,
       videoMeta.publishedAt ? `Published: ${videoMeta.publishedAt}` : null,
+      `Source URL: ${url}`,
       "---------------------------------",
+      "",
     ]
       .filter(Boolean)
       .join("\n");
 
-    const combinedText = `${cleaned}${metadataSection}`;
+    const combinedText = `${metadataSection}\n${cleaned}`;
     const totalWords = combinedText.trim().match(/\S+/g)?.length ?? 0;
 
     const contextId = saveContext(combinedText);
