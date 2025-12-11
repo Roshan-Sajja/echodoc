@@ -7,17 +7,22 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | { contextId?: string; query?: string }
+      | { contextId?: string; contextText?: string; query?: string }
       | null;
 
-    if (!body?.contextId) {
+    if (!body?.contextId && !body?.contextText) {
       return NextResponse.json(
-        { error: "contextId is required" },
+        { error: "contextId or contextText is required" },
         { status: 400 },
       );
     }
 
-    const text = getContext(body.contextId);
+    // Prefer inline contextText (works across serverless instances)
+    // Fall back to contextId lookup (works locally)
+    let text = body.contextText?.trim() || undefined;
+    if (!text && body.contextId) {
+      text = getContext(body.contextId);
+    }
 
     if (!text) {
       return NextResponse.json(

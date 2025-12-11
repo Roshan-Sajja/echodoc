@@ -207,7 +207,7 @@ export function useRealtimeTextSession({
             const ctxRes = await fetch("/api/context-text", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ contextId }),
+              body: JSON.stringify({ contextId, contextText }), // Pass contextText for serverless reliability
             });
             if (ctxRes.ok && dc.readyState === "open") {
               const { text } = await ctxRes.json();
@@ -356,12 +356,17 @@ export function useRealtimeTextSession({
       });
       
       // OPTIMIZATION: Update instructions with query-relevant chunks
-      if (contextId) {
+      // Pass contextText directly to avoid serverless instance mismatch
+      if (contextId || contextText) {
         try {
           const ctxRes = await fetch("/api/context-text", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contextId, query: trimmed }),
+            body: JSON.stringify({ 
+              contextId, 
+              contextText, // Pass directly for serverless reliability
+              query: trimmed 
+            }),
           });
           if (ctxRes.ok) {
             const { text: optimizedText } = await ctxRes.json();
