@@ -60,12 +60,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Voice mode: Send full transcript (no chunking) for best quality
+    // Voice mode: Send full transcript but cap at token limit
     // Text mode: Use chunking to reduce token usage
     const isVoiceMode = body?.mode === "voice";
-    const optimizedText = isVoiceMode
-      ? text // Full transcript for voice
+
+    // ~4 chars per token, 16384 token limit, leave ~1500 tokens for base instructions
+    const MAX_CONTEXT_CHARS = 60000;
+
+    let optimizedText = isVoiceMode
+      ? text
       : getOptimizedContext(text, body.query || null, 3);
+
+    // Truncate if exceeds token limit (applies to both modes as safety)
+    if (optimizedText.length > MAX_CONTEXT_CHARS) {
+      optimizedText = optimizedText.slice(0, MAX_CONTEXT_CHARS) +
+        "\n\n[Content truncated due to length limits]";
+    }
     const charCount = optimizedText.length;
     
     // Model selection based on 60k character cutoff
